@@ -5,12 +5,18 @@ import {
   Button,
   Paper,
   Container,
-  MantineProvider,
+  LoadingOverlay,
+  Text,
+  Group
 } from "@mantine/core";
+import { notifications } from '@mantine/notifications';
+import { useNavigate } from "react-router-dom";
 
 function PasswortVergessen() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -25,13 +31,27 @@ function PasswortVergessen() {
       });
 
       if (response.ok) {
-        alert("Der Administrator wurde benachrichtigt.");
+        setSubmitted(true);
+        notifications.show({
+          title: 'Anfrage gesendet',
+          message: 'Der Administrator wurde benachrichtigt. Sie erhalten in Kürze eine E-Mail mit weiteren Anweisungen.',
+          color: 'green',
+        });
         setEmail("");
       } else {
-        alert("Fehler beim Versenden der Anfrage.");
+        const errorData = await response.json();
+        notifications.show({
+          title: 'Fehler',
+          message: errorData.error || 'Fehler beim Versenden der Anfrage.',
+          color: 'red',
+        });
       }
     } catch (err) {
-      alert("Netzwerkfehler oder Server nicht erreichbar.");
+      notifications.show({
+        title: 'Fehler',
+        message: 'Netzwerkfehler oder Server nicht erreichbar.',
+        color: 'red',
+      });
       console.error(err);
     } finally {
       setLoading(false);
@@ -39,12 +59,24 @@ function PasswortVergessen() {
   };
 
   return (
-    <MantineProvider withGlobalStyles withNormalizeCSS>
-      <Container size={500} my={40}>
-        <Paper withBorder shadow="md" p={30} radius="md">
-          <Title order={3} mb="md" align="center">
-            Passwort zurücksetzen
-          </Title>
+    <Container size={420} my={40}>
+      <Paper withBorder shadow="md" p={30} radius="md" pos="relative">
+        <LoadingOverlay visible={loading} overlayBlur={2} />
+        
+        <Title order={3} mb="md" align="center">
+          Passwort zurücksetzen
+        </Title>
+
+        {submitted ? (
+          <>
+            <Text align="center" mb="md">
+              Ihre Anfrage wurde erfolgreich gesendet. Der Administrator wurde benachrichtigt.
+            </Text>
+            <Button fullWidth onClick={() => navigate("/login")}>
+              Zurück zum Login
+            </Button>
+          </>
+        ) : (
           <form onSubmit={handleSubmit}>
             <TextInput
               label="E-Mail"
@@ -53,18 +85,19 @@ function PasswortVergessen() {
               value={email}
               onChange={(e) => setEmail(e.currentTarget.value)}
             />
-            <Button
-              fullWidth
-              mt="md"
-              type="submit"
-              loading={loading}
-            >
-              Link anfordern
-            </Button>
+
+            <Group position="apart" mt="lg">
+              <Button variant="subtle" onClick={() => navigate("/login")}>
+                Zurück zum Login
+              </Button>
+              <Button type="submit">
+                Link anfordern
+              </Button>
+            </Group>
           </form>
-        </Paper>
-      </Container>
-    </MantineProvider>
+        )}
+      </Paper>
+    </Container>
   );
 }
 

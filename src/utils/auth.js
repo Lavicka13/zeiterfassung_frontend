@@ -1,12 +1,30 @@
+import { jwtDecode } from "jwt-decode";
+
 export function getToken() {
     return localStorage.getItem('token');
 }
 
 export function getRolle() {
-    return parseInt(localStorage.getItem('rechte_id'), 10) || 0;
+    const token = getToken();
+    
+    if (!token) {
+        return 0; // Nicht eingeloggt
+    }
+    
+    try {
+        const decoded = jwtDecode(token);
+        return decoded.RechteID || 0;
+    } catch (error) {
+        console.error("Fehler beim Dekodieren des Tokens:", error);
+        return 0;
+    }
 }
 
-// 👉 Das hast du vergessen
 export function isLoggedIn() {
     return !!getToken();
+}
+
+export function logout() {
+    localStorage.removeItem('token');
+    window.location.href = '/login';
 }
