@@ -313,7 +313,9 @@ function Verwaltung() {
       {!isMobile && (
         <Table highlightOnHover withBorder>
           <thead>
-            <tr>
+            <tr style={{
+                      backgroundColor: "#f9f9f9",
+                    }}>
               <th>Vorname</th>
               <th>Nachname</th>
               <th>E-Mail</th>
@@ -323,7 +325,9 @@ function Verwaltung() {
           </thead>
           <tbody>
             {mitarbeiter.map((m, index) => (
-              <tr key={m.ID}>
+              <tr key={m.ID}style={{
+                      backgroundColor: index % 2 === 1 ? "#f9f9f9" : "transparent",
+                    }}>
   <td style={{ textAlign: 'center' }}>{m.Vorname}</td>
   <td style={{ textAlign: 'center' }}>{m.Nachname}</td>
   <td style={{ textAlign: 'center' }}>{m.Email}</td>
