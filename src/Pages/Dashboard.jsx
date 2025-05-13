@@ -33,6 +33,7 @@ import axios from "axios";
 import dayjs from "dayjs";
 import { getRolle } from "../utils/auth";
 
+
 function Dashboard() {
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
@@ -361,13 +362,11 @@ function Dashboard() {
         </Button>
       ))}
       <Group position="center" mt="xl">
-        <MonthPicker
-          value={selectedMonat ? selectedMonat.toDate() : null}
-          onChange={(d) => {
-            if (d) setSelectedMonat(dayjs(d));
-            if (mobileSidebarOpened) toggleMobileSidebar();
-          }}
-        />
+      <MonthPicker
+  value={selectedMonat ? selectedMonat.toDate() : null}
+  onChange={(d) => d && setSelectedMonat(dayjs(d))}
+  
+/>
       </Group>
       
       {/* Nur Vorgesetzte und Admins sehen den Button zur Nutzerverwaltung */}
