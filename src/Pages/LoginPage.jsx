@@ -67,7 +67,7 @@ function LoginPage() {
   return (
     <Container size={420} my={40}>
       <Title align="center" mb={30}>
-        Arbeitszeiterfassung - Login
+        Arbeitszeiterfassung 
       </Title>
       
       <Paper withBorder shadow="md" p={30} radius="md" pos="relative">

@@ -12,16 +12,28 @@ import {
   Box,
   Badge,
   PasswordInput,
-  LoadingOverlay
+  LoadingOverlay,
+  ActionIcon,
+  Card,
+  SimpleGrid,
+  Stack,
+  useMantineTheme
 } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { notifications } from '@mantine/notifications';
 import { useNavigate } from "react-router-dom";
+import { IconEdit, IconTrash, IconLock, IconChevronLeft } from '@tabler/icons-react';
 import axios from "axios";
 import { isLoggedIn, getRolle } from "../utils/auth";
 
 function Verwaltung() {
   const token = localStorage.getItem("token");
   const navigate = useNavigate();
+  const theme = useMantineTheme();
+  
+  // Responsive Design
+  const isMobile = useMediaQuery(`(max-width: ${theme.breakpoints.sm})`);
+  
   const [mitarbeiter, setMitarbeiter] = useState([]);
   const [bearbeiteUser, setBearbeiteUser] = useState(null);
   const [neuUser, setNeuUser] = useState({
@@ -210,38 +222,85 @@ function Verwaltung() {
     }
   };
 
-const getRollenBadge = (rolle) => {
-  console.log("Rolle Wert:", rolle); // Debugging: Zeigt den tatsächlichen Wert im Browser-Konsolenfenster
-  
-  let color = "green"; // Standard: grün für Mitarbeiter
-  let text = "Mitarbeiter"; // Standardtext
-  
-  // Versuche, sowohl Strings als auch Zahlen zu behandeln
-  if (rolle === "admin" || rolle === 3 || rolle === "3") {
-    color = "red";
-    text = "Administrator";
-  } else if (rolle === "vorgesetzter" || rolle === 2 || rolle === "2") {
-    color = "blue";
-    text = "Vorgesetzter";
-  } else if (rolle === "mitarbeiter" || rolle === 1 || rolle === "1") {
-    color = "green";
-    text = "Mitarbeiter";
-  }
-  
-  return <Badge color={color}>{text}</Badge>;
-};
+  const getRollenBadge = (rolle) => {
+    let color = "green"; // Standard: grün für Mitarbeiter
+    let text = "Mitarbeiter"; // Standardtext
+    
+    // Versuche, sowohl Strings als auch Zahlen zu behandeln
+    if (rolle === "admin" || rolle === 3 || rolle === "3") {
+      color = "red";
+      text = "Administrator";
+    } else if (rolle === "vorgesetzter" || rolle === 2 || rolle === "2") {
+      color = "blue";
+      text = "Vorgesetzter";
+    } else if (rolle === "mitarbeiter" || rolle === 1 || rolle === "1") {
+      color = "green";
+      text = "Mitarbeiter";
+    }
+    
+    return <Badge color={color}>{text}</Badge>;
+  };
 
   const goToDashboard = () => {
     navigate("/dashboard");
   };
+
+  // Mobile Karten-Darstellung für jeden Mitarbeiter
+  const MitarbeiterCard = ({ mitarbeiter, index }) => (
+    <Card key={mitarbeiter.ID} shadow="sm" withBorder p="sm" mb="sm">
+      <Card.Section withBorder p="xs" bg={index % 2 === 1 ? "gray.0" : "white"}>
+        <Group position="apart">
+          <Text fw={500}>
+            {mitarbeiter.Vorname} {mitarbeiter.Nachname}
+          </Text>
+          {getRollenBadge(mitarbeiter.Rolle || mitarbeiter.RechteID)}
+        </Group>
+      </Card.Section>
+      
+      <Text size="sm" mt="xs">
+        <b>E-Mail:</b> {mitarbeiter.Email}
+      </Text>
+      
+      <Group mt="md" position="center" spacing="xs">
+        <Button 
+          size="xs" 
+          leftSection={<IconEdit size={14} />}
+          onClick={() => setBearbeiteUser(mitarbeiter)}
+        >
+          Bearbeiten
+        </Button>
+        <Button
+          size="xs"
+          variant="outline"
+          color="red"
+          leftSection={<IconTrash size={14} />}
+          onClick={() => setDeleteModal({ open: true, user: mitarbeiter })}
+        >
+          Löschen
+        </Button>
+        <Button
+          size="xs"
+          variant="light"
+          leftSection={<IconLock size={14} />}
+          onClick={() => setResetModal({ open: true, user: mitarbeiter })}
+        >
+          Reset
+        </Button>
+      </Group>
+    </Card>
+  );
 
   return (
     <Paper p="lg" pos="relative">
       <LoadingOverlay visible={loading} overlayBlur={2} />
       
       <Group position="apart" mb="lg">
-        <Title order={2}>Nutzerverwaltung</Title>
-        <Button onClick={goToDashboard} variant="outline">
+        <Title order={2} size={isMobile ? "h3" : "h2"}>Nutzerverwaltung</Title>
+        <Button 
+          onClick={goToDashboard} 
+          variant="outline" 
+          leftSection={<IconChevronLeft size={16} />}
+        >
           Zurück zum Dashboard
         </Button>
       </Group>
@@ -250,62 +309,68 @@ const getRollenBadge = (rolle) => {
         + Neuen Nutzer hinzufügen
       </Button>
 
-     
-
-      <Table highlightOnHover withBorder>
-        <thead>
-          <tr>
-            <th>Vorname</th>
-            <th>Nachname</th>
-            <th>E-Mail</th>
-            <th>Rolle</th>
-            <th>Aktionen</th>
-          </tr>
-        </thead>
-        <tbody>
-          {mitarbeiter.map((m, index) => (
-            <tr
-              key={m.ID}
-              style={{
-                backgroundColor: index % 2 === 1 ? "#f9f9f9" : "transparent",
-              }}
-            >
-              <td>{m.Vorname}</td>
-              <td>{m.Nachname}</td>
-              <td>{m.Email}</td>
-              <td>{getRollenBadge(m.Rolle)}</td>
-              <td>
-                <Group spacing="xs">
-                  <Button size="xs" onClick={() => setBearbeiteUser(m)}>
-                    Bearbeiten
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    color="red"
-                    onClick={() => setDeleteModal({ open: true, user: m })}
-                  >
-                    Löschen
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="light"
-                    onClick={() => setResetModal({ open: true, user: m })}
-                  >
-                    🔒 Reset
-                  </Button>
-                </Group>
-              </td>
+      {/* Desktop-Tabellendarstellung */}
+      {!isMobile && (
+        <Table highlightOnHover withBorder>
+          <thead>
+            <tr>
+              <th>Vorname</th>
+              <th>Nachname</th>
+              <th>E-Mail</th>
+              <th>Rolle</th>
+              <th>Aktionen</th>
             </tr>
+          </thead>
+          <tbody>
+            {mitarbeiter.map((m, index) => (
+              <tr key={m.ID}>
+  <td style={{ textAlign: 'center' }}>{m.Vorname}</td>
+  <td style={{ textAlign: 'center' }}>{m.Nachname}</td>
+  <td style={{ textAlign: 'center' }}>{m.Email}</td>
+  <td style={{ textAlign: 'center' }}>{getRollenBadge(m.Rolle || m.RechteID)}</td>
+  <td style={{ textAlign: 'center' }}>
+    <Group spacing="xs">
+      <Button size="xs" onClick={() => setBearbeiteUser(m)}>
+        Bearbeiten
+      </Button>
+      <Button
+        size="xs"
+        variant="outline"
+        color="red"
+        onClick={() => setDeleteModal({ open: true, user: m })}
+      >
+        Löschen
+      </Button>
+      <Button
+        size="xs"
+        variant="light"
+        onClick={() => setResetModal({ open: true, user: m })}
+      >
+        🔒 Reset
+      </Button>
+    </Group>
+  </td>
+</tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+
+      {/* Mobile-Kartendarstellung */}
+      {isMobile && (
+        <Stack spacing="md">
+          {mitarbeiter.map((m, index) => (
+            <MitarbeiterCard key={m.ID} mitarbeiter={m} index={index} />
           ))}
-        </tbody>
-      </Table>
+        </Stack>
+      )}
 
       {/* Modal für neue Nutzer */}
       <Modal
         opened={offenNeuModal}
         onClose={() => setOffenNeuModal(false)}
         title="Neuen Nutzer anlegen"
+        size={isMobile ? "xs" : "md"}
       >
         <LoadingOverlay visible={loading} overlayBlur={2} />
         <TextInput
@@ -355,7 +420,7 @@ const getRollenBadge = (rolle) => {
           onChange={(value) => setNeuUser({ ...neuUser, Rolle: value })}
           mb="md"
         />
-        <Group mt="md">
+        <Group mt="md" position="right">
           <Button onClick={handleNeuSpeichern}>Erstellen</Button>
           <Button variant="outline" onClick={() => setOffenNeuModal(false)}>
             Abbrechen
@@ -368,6 +433,7 @@ const getRollenBadge = (rolle) => {
         opened={deleteModal.open}
         onClose={() => setDeleteModal({ open: false, user: null })}
         title="Nutzer löschen"
+        size={isMobile ? "xs" : "md"}
       >
         <LoadingOverlay visible={loading} overlayBlur={2} />
         <Text mb="lg">
@@ -389,6 +455,7 @@ const getRollenBadge = (rolle) => {
         opened={resetModal.open}
         onClose={() => setResetModal({ open: false, user: null })}
         title="Passwort zurücksetzen"
+        size={isMobile ? "xs" : "md"}
       >
         <LoadingOverlay visible={loading} overlayBlur={2} />
         <Text mb="md">
@@ -409,7 +476,9 @@ const getRollenBadge = (rolle) => {
           </Button>
         </Group>
       </Modal>
-       {bearbeiteUser && (
+       
+      {/* Bearbeitungsbereich */}
+      {bearbeiteUser && (
         <Box mb="xl" p="md" sx={{ border: '1px solid #ddd', borderRadius: '4px' }}>
           <Title order={4} mb="md">Bearbeite: {bearbeiteUser.Vorname} {bearbeiteUser.Nachname}</Title>
           <TextInput
@@ -458,7 +527,7 @@ const getRollenBadge = (rolle) => {
             }
             mb="md"
           />
-          <Group mt="md">
+          <Group mt="md" position="right">
             <Button onClick={handleUpdate}>Speichern</Button>
             <Button variant="outline" onClick={() => setBearbeiteUser(null)}>
               Abbrechen

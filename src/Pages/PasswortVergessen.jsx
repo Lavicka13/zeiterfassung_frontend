@@ -11,26 +11,54 @@ import {
 } from "@mantine/core";
 import { notifications } from '@mantine/notifications';
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 function PasswortVergessen() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [emailError, setEmailError] = useState("");
   const navigate = useNavigate();
+
+  // Email-Format validieren
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email) return;
-
+    
+    // Email-Format überprüfen
+    if (!email) {
+      setEmailError("Bitte geben Sie eine E-Mail-Adresse ein.");
+      return;
+    }
+    
+    if (!validateEmail(email)) {
+      setEmailError("Bitte geben Sie eine gültige E-Mail-Adresse ein.");
+      return;
+    }
+    
+    setEmailError("");
     setLoading(true);
+    
     try {
-      const response = await fetch("http://localhost:8080/api/passwort-vergessen", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+      // Prüfen, ob der Nutzer existiert
+      const checkResponse = await axios.get(`http://localhost:8080/api/nutzer/email-exists?email=${encodeURIComponent(email)}`);
+      
+      if (!checkResponse.data.exists) {
+        setEmailError("Es wurde kein Konto mit dieser E-Mail-Adresse gefunden. Bitte überprüfen Sie Ihre Eingabe.");
+        setLoading(false);
+        return;
+      }
+      
+      // Passwort-Reset-Anfrage senden
+      const response = await axios.post("http://localhost:8080/api/passwort-vergessen", {
+        email
       });
 
-      if (response.ok) {
+      if (response.status === 200) {
         setSubmitted(true);
         notifications.show({
           title: 'Anfrage gesendet',
@@ -38,21 +66,28 @@ function PasswortVergessen() {
           color: 'green',
         });
         setEmail("");
+      }
+    } catch (err) {
+      console.error("Fehler:", err);
+      
+      // Spezifische Fehlermeldung basierend auf dem Statuscode
+      if (err.response) {
+        if (err.response.status === 404) {
+          setEmailError("Es wurde kein Konto mit dieser E-Mail-Adresse gefunden.");
+        } else {
+          notifications.show({
+            title: 'Fehler',
+            message: err.response.data?.error || 'Ein Fehler ist aufgetreten.',
+            color: 'red',
+          });
+        }
       } else {
-        const errorData = await response.json();
         notifications.show({
           title: 'Fehler',
-          message: errorData.error || 'Fehler beim Versenden der Anfrage.',
+          message: 'Netzwerkfehler oder Server nicht erreichbar.',
           color: 'red',
         });
       }
-    } catch (err) {
-      notifications.show({
-        title: 'Fehler',
-        message: 'Netzwerkfehler oder Server nicht erreichbar.',
-        color: 'red',
-      });
-      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -80,10 +115,11 @@ function PasswortVergessen() {
           <form onSubmit={handleSubmit}>
             <TextInput
               label="E-Mail"
-              placeholder="dein@email.de"
+              placeholder="ihre@email.de"
               required
               value={email}
               onChange={(e) => setEmail(e.currentTarget.value)}
+              error={emailError}
             />
 
             <Group position="apart" mt="lg">
