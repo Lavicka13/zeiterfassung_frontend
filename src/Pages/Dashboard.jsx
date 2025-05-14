@@ -14,7 +14,7 @@ import {
   Modal,
   Text,
   LoadingOverlay,
-  ActionIcon, 
+  ActionIcon,
   Card,
   SimpleGrid,
   Drawer,
@@ -33,14 +33,25 @@ import axios from "axios";
 import dayjs from "dayjs";
 import { getRolle } from "../utils/auth";
 
-
 function Dashboard() {
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
-  const decoded = useMemo(() => (token ? jwtDecode(token) : null), [token]);
+
+  const decoded = useMemo(() => {
+    try {
+      return token ? jwtDecode(token) : null;
+    } catch (e) {
+      console.error("Ungültiges Token:", e);
+      return null;
+    }
+  }, [token]);
+
+  const userRole = useMemo(() => {
+    const rolleFromToken = decoded?.rolle;
+    return rolleFromToken !== undefined ? rolleFromToken : getRolle();
+  }, [decoded]);
+
   const theme = useMantineTheme();
-  
-  // Mantine Hooks für responsive Designs
   const isMobile = useMediaQuery(`(max-width: ${theme.breakpoints.sm})`);
   const isExtraSmall = useMediaQuery(`(max-width: ${theme.breakpoints.xs})`);
 
@@ -51,47 +62,40 @@ function Dashboard() {
   const [startzeit, setStartzeit] = useState("");
   const [endzeit, setEndzeit] = useState("");
   const istAktuellerMonat = selectedMonat.isSame(dayjs(), "month");
-  
-  // Geändert: Prüft nur, ob ein Eintrag für heute existiert, ohne Berücksichtigung der Endzeit
   const hatHeuteEintrag = arbeitszeiten.some(
     (a) => dayjs(a.datum).isSame(dayjs(), "day")
   );
-  
-  // Neuer State: Speichert den Eintrag für heute, falls vorhanden
   const [heutigerEintrag, setHeutigerEintrag] = useState(null);
-  
   const [loading, setLoading] = useState(false);
   const [mobileSidebarOpened, { toggle: toggleMobileSidebar }] = useDisclosure(false);
-  
-  // State für das Bearbeiten-Modal
-  const [editModal, setEditModal] = useState({
-    open: false,
-    arbeitszeit: null,
-    anfangszeit: "",
-    endzeit: ""
-  });
+  const [editModal, setEditModal] = useState({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" });
 
-  // Benutzerrolle ermitteln
-  const userRole = useMemo(() => getRolle(), []);
   const isAdmin = userRole >= 3;
   const isVorgesetzter = userRole >= 2;
-
-  // Definiere einen Stil für die zentrierte Ausrichtung
   const centerTextStyle = { textAlign: 'center' };
 
   useEffect(() => {
     const fetchMitarbeiter = async () => {
       setLoading(true);
       try {
-        const response = await axios.get(
-          "http://localhost:8080/api/mitarbeiter",
-          { headers: { Authorization: token } }
-        );
+        const response = await axios.get("http://localhost:8080/api/mitarbeiter", {
+          headers: { Authorization: token }
+        });
         setMitarbeiterListe(response.data);
-        if (decoded?.user_id) {
-          const user = response.data.find((u) => u.ID === decoded.user_id);
-          if (user) setSelectedMitarbeiter(user);
+
+        const tokenId = String(decoded?.nutzer_id);
+        const user = response.data.find((u) => String(u.ID) === tokenId);
+
+        if (user) {
+          setSelectedMitarbeiter(user);
+        } else if (response.data.length > 0) {
+          console.warn("Nutzer aus Token nicht in Mitarbeiterliste gefunden. Fallback auf ersten.");
+          setSelectedMitarbeiter(response.data[0]);
+        } else {
+          console.warn("Keine Mitarbeiterdaten verfügbar.");
+          setSelectedMitarbeiter(null);
         }
+
       } catch (error) {
         console.error("Fehler beim Laden der Mitarbeiter:", error);
         notifications.show({
@@ -103,9 +107,9 @@ function Dashboard() {
         setLoading(false);
       }
     };
-    if (token) fetchMitarbeiter();
-  }, [token, decoded?.user_id]);
 
+    if (token && decoded) fetchMitarbeiter();
+  }, [token, decoded]);
   useEffect(() => {
     if (!selectedMitarbeiter || !selectedMonat) return;
     
@@ -212,6 +216,46 @@ function Dashboard() {
     }
   };
 
+  // Zuerst fügen wir eine neue Funktion zum Löschen eines Arbeitszeit-Eintrags hinzu
+const handleDeleteArbeitszeit = async (id) => {
+  if (!id) return;
+  
+  setLoading(true);
+  try {
+    // Verbesserte Fehlerbehandlung und Logging
+    console.log("Versuche Arbeitszeit mit ID zu löschen:", id);
+    
+    // Versuche einen anderen API-Pfad, der konsistent mit deinen anderen API-Endpunkten ist
+    const response = await axios.delete(`http://localhost:8080/api/arbeitszeiten/${id}`, {
+      headers: { Authorization: token }
+    });
+    
+    console.log("Antwort vom Server:", response.data);
+    
+    notifications.show({
+      title: 'Erfolg',
+      message: 'Arbeitszeit-Eintrag wurde erfolgreich gelöscht.',
+      color: 'green',
+    });
+    
+    setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" });
+    await refreshArbeitszeiten();
+  } catch (error) {
+    // Verbesserte Fehlerprotokollierung
+    console.error("Fehler beim Löschen:", error);
+    console.error("Fehlerdetails:", error.response?.data);
+    console.error("Status-Code:", error.response?.status);
+    
+    notifications.show({
+      title: 'Fehler',
+      message: error.response?.data?.error || 'Fehler beim Löschen des Eintrags',
+      color: 'red',
+    });
+  } finally {
+    setLoading(false);
+  }
+};
+
   const handleEdit = (arbeitszeit) => {
     // Modal mit den Daten des ausgewählten Eintrags öffnen
     const anfangszeitFormatted = arbeitszeit.anfangszeit ? 
@@ -228,49 +272,62 @@ function Dashboard() {
   };
   
   const handleSaveEdit = async () => {
-    if (!editModal.arbeitszeit) return;
+  if (!editModal.arbeitszeit) return;
+  
+  // Validierung
+  if (!editModal.anfangszeit) {
+    notifications.show({
+      title: 'Fehler',
+      message: 'Bitte geben Sie eine Anfangszeit ein.',
+      color: 'red',
+    });
+    return;
+  }
+  
+  setLoading(true);
+  try {
+    // Datum aus dem arbeitszeit-Objekt extrahieren
+    const datumStr = dayjs(editModal.arbeitszeit.datum).format("YYYY-MM-DD");
     
-    // Validierung
-    if (!editModal.anfangszeit) {
-      notifications.show({
-        title: 'Fehler',
-        message: 'Bitte geben Sie eine Anfangszeit ein.',
-        color: 'red',
-      });
-      return;
+    // Payload erstellen
+    const payload = {
+      id: editModal.arbeitszeit.id,
+      anfangszeit: `${datumStr}T${editModal.anfangszeit}:00`,
+      bearbeiter_id: decoded?.nutzer_id,
+    };
+    
+    // Endzeit nur hinzufügen, wenn sie tatsächlich einen Wert hat
+    if (editModal.endzeit && editModal.endzeit.trim() !== '') {
+      payload.endzeit = `${datumStr}T${editModal.endzeit}:00`;
     }
     
-    setLoading(true);
-    try {
-      const response = await axios.put(
-        "http://localhost:8080/api/arbeitszeit/update", 
-        {
-          id: editModal.arbeitszeit.id,
-          anfangszeit: `${editModal.arbeitszeit.datum}T${editModal.anfangszeit}:00`,
-          endzeit: editModal.endzeit ? `${editModal.arbeitszeit.datum}T${editModal.endzeit}:00` : null,
-          bearbeiter_id: decoded?.user_id,
-        },
-        { headers: { Authorization: token } }
-      );
+    console.log("Sende Daten an Backend:", payload);
+    
+    const response = await axios.put(
+      "http://localhost:8080/api/arbeitszeit/update", 
+      payload,
+      { headers: { Authorization: token } }
+    );
 
-      notifications.show({
-        title: 'Erfolg',
-        message: 'Änderungen wurden gespeichert.',
-        color: 'green',
-      });
-      
-      setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" });
-      await refreshArbeitszeiten();
-    } catch (error) {
-      notifications.show({
-        title: 'Fehler',
-        message: error.response?.data?.error || 'Fehler beim Bearbeiten der Arbeitszeit',
-        color: 'red',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+    notifications.show({
+      title: 'Erfolg',
+      message: 'Änderungen wurden gespeichert.',
+      color: 'green',
+    });
+    
+    setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" });
+    await refreshArbeitszeiten();
+  } catch (error) {
+    console.error("Fehler beim Bearbeiten:", error.response?.data || error);
+    notifications.show({
+      title: 'Fehler',
+      message: error.response?.data?.error || 'Fehler beim Bearbeiten der Arbeitszeit',
+      color: 'red',
+    });
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -279,6 +336,16 @@ function Dashboard() {
 
   // Überarbeitete Funktion für das Speichern der Arbeitszeit
   const handleSaveArbeitszeit = async () => {
+    // Prüfen, ob ein Mitarbeiter ausgewählt ist
+    if (!selectedMitarbeiter) {
+      notifications.show({
+        title: 'Fehler',
+        message: 'Kein Mitarbeiter ausgewählt. Bitte wählen Sie einen Mitarbeiter aus.',
+        color: 'red',
+      });
+      return;
+    }
+    
     // Wenn keine Startzeit eingegeben wurde, aktuelle Zeit verwenden
     if (!startzeit) {
       setStartzeit(dayjs().format("HH:mm"));
@@ -297,7 +364,7 @@ function Dashboard() {
             id: heutigerEintrag.id,
             anfangszeit: dayjs(heutigerEintrag.anfangszeit).format("YYYY-MM-DD[T]HH:mm:00"),
             endzeit: `${dayjs().format("YYYY-MM-DD")}T${endzeitToSave}:00`,
-            bearbeiter_id: decoded?.user_id,
+            bearbeiter_id: decoded?.nutzer_id,
           },
           { headers: { Authorization: token } }
         );
@@ -387,9 +454,9 @@ function Dashboard() {
     if (isVorgesetzter || isAdmin) {
       return mitarbeiterListe;
     } else {
-      return mitarbeiterListe.filter(m => m.ID === decoded?.user_id);
+      return mitarbeiterListe.filter(m => m.ID === decoded?.nutzer_id);
     }
-  }, [mitarbeiterListe, decoded?.user_id, isVorgesetzter, isAdmin]);
+  }, [mitarbeiterListe, decoded?.nutzer_id, isVorgesetzter, isAdmin]);
 
   // Sidebar-Inhalt, wiederverwendbar für Desktop und Mobile
   const SidebarContent = () => (
@@ -743,55 +810,74 @@ function Dashboard() {
         </Grid>
         
         {/* Modal für Bearbeitung der Arbeitszeiten */}
-        <Modal
-          opened={editModal.open}
-          onClose={() => setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" })}
-          title="Arbeitszeit bearbeiten"
-          size={isMobile ? "xs" : "md"}
+        {/* Modal für Bearbeitung der Arbeitszeiten */}
+<Modal
+  opened={editModal.open}
+  onClose={() => setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" })}
+  title="Arbeitszeit bearbeiten"
+  size={isMobile ? "xs" : "md"}
+>
+  <LoadingOverlay visible={loading} overlayBlur={2} />
+  
+  {editModal.arbeitszeit && (
+    <>
+      <Text mb="md" ta="center">
+        Datum: {dayjs(editModal.arbeitszeit.datum).format("DD.MM.YYYY")}
+      </Text>
+      
+      <TimeInput
+        label="Anfangszeit"
+        leftSection={<IconClock size={16} />}
+        value={editModal.anfangszeit}
+        onChange={(e) => setEditModal({ ...editModal, anfangszeit: e.target.value })}
+        mb="md"
+        placeholder="08:00"
+        required
+      />
+      
+      <TimeInput
+        label="Endzeit"
+        leftSection={<IconClock size={16} />}
+        value={editModal.endzeit}
+        onChange={(e) => setEditModal({ ...editModal, endzeit: e.target.value })}
+        mb="md"
+        placeholder="16:30"
+      />
+      
+      <Text size="sm" c="dimmed" mb="md" ta="center">
+        Hinweis: Die Pause wird automatisch basierend auf der Arbeitszeit berechnet.
+      </Text>
+      
+      <Group position="center" mb="md">
+        <Button 
+          variant="outline" 
+          onClick={() => setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" })}
         >
-          <LoadingOverlay visible={loading} overlayBlur={2} />
-          
-          {editModal.arbeitszeit && (
-            <>
-              <Text mb="md" ta="center">
-                Datum: {dayjs(editModal.arbeitszeit.datum).format("DD.MM.YYYY")}
-              </Text>
-              
-              <TimeInput
-                label="Anfangszeit"
-                leftSection={<IconClock size={16} />}
-                value={editModal.anfangszeit}
-                onChange={(e) => setEditModal({ ...editModal, anfangszeit: e.target.value })}
-                mb="md"
-                placeholder="08:00"
-                required
-              />
-              
-              <TimeInput
-                label="Endzeit"
-                leftSection={<IconClock size={16} />}
-                value={editModal.endzeit}
-                onChange={(e) => setEditModal({ ...editModal, endzeit: e.target.value })}
-                mb="md"
-                placeholder="16:30"
-              />
-              
-              <Text size="sm" c="dimmed" mb="md" ta="center">
-                Hinweis: Die Pause wird automatisch basierend auf der Arbeitszeit berechnet.
-              </Text>
-              
-              <Group position="center">
-                <Button 
-                  variant="outline" 
-                  onClick={() => setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" })}
-                >
-                  Abbrechen
-                </Button>
-                <Button onClick={handleSaveEdit}>Speichern</Button>
-              </Group>
-            </>
-          )}
-        </Modal>
+          Abbrechen
+        </Button>
+        <Button onClick={handleSaveEdit}>Speichern</Button>
+      </Group>
+      
+      {/* Trennlinie */}
+      <Box mb="md" style={{ borderTop: '1px solid #e9ecef', margin: '15px 0' }}></Box>
+      
+      {/* Löschen-Button */}
+      <Group position="center">
+        <Button 
+          color="red" 
+          variant="outline"
+          onClick={() => {
+            if (window.confirm('Sind Sie sicher, dass Sie diesen Arbeitszeit-Eintrag löschen möchten?')) {
+              handleDeleteArbeitszeit(editModal.arbeitszeit.id);
+            }
+          }}
+        >
+          Eintrag löschen
+        </Button>
+      </Group>
+    </>
+  )}
+</Modal>
       </Container>
     </DatesProvider>
   );
