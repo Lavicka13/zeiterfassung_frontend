@@ -54,7 +54,7 @@ function Dashboard() {
   const theme = useMantineTheme();
   const isMobile = useMediaQuery(`(max-width: ${theme.breakpoints.sm})`);
   const isExtraSmall = useMediaQuery(`(max-width: ${theme.breakpoints.xs})`);
-
+  const [endzeitError, setEndzeitError] = useState("");
   const [mitarbeiterListe, setMitarbeiterListe] = useState([]);
   const [selectedMitarbeiter, setSelectedMitarbeiter] = useState(null);
   const [selectedMonat, setSelectedMonat] = useState(dayjs());
@@ -271,7 +271,7 @@ const handleDeleteArbeitszeit = async (id) => {
     });
   };
   
-  const handleSaveEdit = async () => {
+const handleSaveEdit = async () => {
   if (!editModal.arbeitszeit) return;
   
   // Validierung
@@ -287,27 +287,54 @@ const handleDeleteArbeitszeit = async (id) => {
   setLoading(true);
   try {
     // Datum aus dem arbeitszeit-Objekt extrahieren
-    const datumStr = dayjs(editModal.arbeitszeit.datum).format("YYYY-MM-DD");
+    const datum = dayjs(editModal.arbeitszeit.datum);
     
-    // Payload erstellen
+    // Anfangszeit mit dem korrekten Datum kombinieren und in ISO-Format mit Z konvertieren
+    // Go erwartet RFC3339-Format: "2006-01-02T15:04:05Z07:00"
+    const anfangszeit = datum
+      .hour(parseInt(editModal.anfangszeit.split(':')[0]))
+      .minute(parseInt(editModal.anfangszeit.split(':')[1]))
+      .second(0)
+      .toISOString(); // Format: 2025-05-14T08:00:00.000Z
+    
+    // Payload vorbereiten
     const payload = {
       id: editModal.arbeitszeit.id,
-      anfangszeit: `${datumStr}T${editModal.anfangszeit}:00`,
+      anfangszeit: anfangszeit,
       bearbeiter_id: decoded?.nutzer_id,
     };
     
     // Endzeit nur hinzufügen, wenn sie tatsächlich einen Wert hat
     if (editModal.endzeit && editModal.endzeit.trim() !== '') {
-      payload.endzeit = `${datumStr}T${editModal.endzeit}:00`;
+      const endzeit = datum
+        .hour(parseInt(editModal.endzeit.split(':')[0]))
+        .minute(parseInt(editModal.endzeit.split(':')[1]))
+        .second(0)
+        .toISOString(); // Format: 2025-05-14T16:30:00.000Z
+      
+      payload.endzeit = endzeit;
     }
     
-    console.log("Sende Daten an Backend:", payload);
+    console.log("Sende Daten an Backend:", JSON.stringify(payload, null, 2));
     
-    const response = await axios.put(
-      "http://localhost:8080/api/arbeitszeit/update", 
-      payload,
-      { headers: { Authorization: token } }
-    );
+    const response = await axios({
+      method: 'put',
+      url: 'http://localhost:8080/api/arbeitszeit/update',
+      headers: { 
+        'Authorization': token,
+        'Content-Type': 'application/json'
+      },
+      data: payload,
+      validateStatus: function (status) {
+        return status < 500; // Akzeptiere auch Fehlerstatus für Debug-Zwecke
+      }
+    });
+    
+    console.log("Server-Antwort:", response.status, response.data);
+    
+    if (response.status !== 200) {
+      throw new Error(response.data.error || "Unbekannter Fehler");
+    }
 
     notifications.show({
       title: 'Erfolg',
@@ -318,10 +345,15 @@ const handleDeleteArbeitszeit = async (id) => {
     setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" });
     await refreshArbeitszeiten();
   } catch (error) {
-    console.error("Fehler beim Bearbeiten:", error.response?.data || error);
+    console.error("Fehler beim Bearbeiten:", error);
+    
+    if (error.response) {
+      console.error("Server Antwort:", error.response.status, error.response.data);
+    }
+    
     notifications.show({
       title: 'Fehler',
-      message: error.response?.data?.error || 'Fehler beim Bearbeiten der Arbeitszeit',
+      message: error.response?.data?.error || error.message || 'Fehler beim Bearbeiten der Arbeitszeit',
       color: 'red',
     });
   } finally {
@@ -335,119 +367,191 @@ const handleDeleteArbeitszeit = async (id) => {
   };
 
   // Überarbeitete Funktion für das Speichern der Arbeitszeit
-  const handleSaveArbeitszeit = async () => {
-    // Prüfen, ob ein Mitarbeiter ausgewählt ist
-    if (!selectedMitarbeiter) {
-      notifications.show({
-        title: 'Fehler',
-        message: 'Kein Mitarbeiter ausgewählt. Bitte wählen Sie einen Mitarbeiter aus.',
-        color: 'red',
+ // Überarbeitete Funktion für das Speichern der Arbeitszeit
+// Überarbeitete Funktion für das Speichern der Arbeitszeit
+const handleSaveArbeitszeit = async () => {
+  // Prüfen, ob ein Mitarbeiter ausgewählt ist
+  if (!selectedMitarbeiter) {
+    notifications.show({
+      title: 'Fehler',
+      message: 'Kein Mitarbeiter ausgewählt. Bitte wählen Sie einen Mitarbeiter aus.',
+      color: 'red',
+    });
+    return;
+  }
+  
+  // Wenn keine Startzeit eingegeben wurde, aktuelle Zeit verwenden
+  if (!startzeit) {
+    setStartzeit(dayjs().format("HH:mm"));
+  }
+  
+  setLoading(true);
+  try {
+    // Wenn bereits ein Eintrag für heute existiert und keine Endzeit hat
+    if (heutigerEintrag && !heutigerEintrag.endzeit) {
+      // Aktualisiere den bestehenden Eintrag mit der Endzeit
+      const endzeitToSave = endzeit || dayjs().format("HH:mm");
+      
+      // Anfangszeit aus dem bestehenden Eintrag erhalten
+      const anfangszeitDate = dayjs(heutigerEintrag.anfangszeit);
+      
+      // Endzeit als ISO-String erstellen 
+      const endeDate = dayjs()
+        .hour(parseInt(endzeitToSave.split(':')[0]))
+        .minute(parseInt(endzeitToSave.split(':')[1]))
+        .second(0);
+      
+      const payload = {
+        id: heutigerEintrag.id,
+        anfangszeit: anfangszeitDate.toISOString(), // ISO-Format: 2025-05-14T08:00:00.000Z
+        endzeit: endeDate.toISOString(), // ISO-Format: 2025-05-14T16:30:00.000Z
+        bearbeiter_id: decoded?.nutzer_id,
+      };
+      
+      console.log("Aktualisiere Eintrag:", JSON.stringify(payload, null, 2));
+      
+      const response = await axios({
+        method: 'put',
+        url: 'http://localhost:8080/api/arbeitszeit/update',
+        headers: { 
+          'Authorization': token,
+          'Content-Type': 'application/json'
+        },
+        data: payload
       });
-      return;
-    }
-    
-    // Wenn keine Startzeit eingegeben wurde, aktuelle Zeit verwenden
-    if (!startzeit) {
-      setStartzeit(dayjs().format("HH:mm"));
-    }
-    
-    setLoading(true);
-    try {
-      // Wenn bereits ein Eintrag für heute existiert und keine Endzeit hat
-      if (heutigerEintrag && !heutigerEintrag.endzeit) {
-        // Aktualisiere den bestehenden Eintrag mit der Endzeit
-        const endzeitToSave = endzeit || dayjs().format("HH:mm");
-        
-        await axios.put(
-          "http://localhost:8080/api/arbeitszeit/update",
-          {
-            id: heutigerEintrag.id,
-            anfangszeit: dayjs(heutigerEintrag.anfangszeit).format("YYYY-MM-DD[T]HH:mm:00"),
-            endzeit: `${dayjs().format("YYYY-MM-DD")}T${endzeitToSave}:00`,
-            bearbeiter_id: decoded?.nutzer_id,
-          },
-          { headers: { Authorization: token } }
-        );
-        
-        notifications.show({
-          title: 'Erfolg',
-          message: 'Endzeit wurde erfolgreich gespeichert.',
-          color: 'green',
-        });
-      } else {
-        // Erstelle einen neuen Eintrag
-        const startzeitToSave = startzeit || dayjs().format("HH:mm");
-        
-        const payload = {
-          nutzer_id: selectedMitarbeiter.ID,
-          datum: dayjs().format("YYYY-MM-DD"),
-          anfangszeit: dayjs(`${dayjs().format("YYYY-MM-DD")}T${startzeitToSave}`).toISOString(),
-        };
+      
+      notifications.show({
+        title: 'Erfolg',
+        message: 'Endzeit wurde erfolgreich gespeichert.',
+        color: 'green',
+      });
+    } else {
+      // Erstelle einen neuen Eintrag
+      const startzeitToSave = startzeit || dayjs().format("HH:mm");
+      const heute = dayjs();
+      
+      // Anfangszeit als ISO-String erstellen
+      const anfangDate = heute
+        .hour(parseInt(startzeitToSave.split(':')[0]))
+        .minute(parseInt(startzeitToSave.split(':')[1]))
+        .second(0);
+      
+      const payload = {
+        nutzer_id: selectedMitarbeiter.ID,
+        datum: heute.format("YYYY-MM-DD"),
+        anfangszeit: anfangDate.toISOString(), // ISO-Format: 2025-05-14T08:00:00.000Z
+      };
 
-        if (endzeit) {
-          payload.endzeit = dayjs(`${dayjs().format("YYYY-MM-DD")}T${endzeit}`).toISOString();
-        }
-
-        await axios.post("http://localhost:8080/api/arbeitszeiten", payload, {
-          headers: { Authorization: token },
-        });
+      if (endzeit) {
+        const endeDate = heute
+          .hour(parseInt(endzeit.split(':')[0]))
+          .minute(parseInt(endzeit.split(':')[1]))
+          .second(0);
         
-        notifications.show({
-          title: 'Erfolg',
-          message: 'Arbeitszeit wurde erfolgreich gespeichert.',
-          color: 'green',
-        });
+        payload.endzeit = endeDate.toISOString(); // ISO-Format: 2025-05-14T16:30:00.000Z
       }
       
-      await refreshArbeitszeiten();
+      console.log("Erstelle neuen Eintrag:", JSON.stringify(payload, null, 2));
+      
+      await axios.post("http://localhost:8080/api/arbeitszeiten", payload, {
+        headers: { 
+          Authorization: token,
+          'Content-Type': 'application/json'
+        },
+      });
+      
+      notifications.show({
+        title: 'Erfolg',
+        message: 'Arbeitszeit wurde erfolgreich gespeichert.',
+        color: 'green',
+      });
+    }
+    
+    await refreshArbeitszeiten();
+    setStartzeit("");
+    setEndzeit("");
+  } catch (err) {
+    console.error("Fehler beim Speichern der Zeiten:", err);
+    
+    if (err.response) {
+      console.error("Server Antwort:", err.response.status, err.response.data);
+    }
+    
+    notifications.show({
+      title: 'Fehler',
+      message: err.response?.data?.error || 'Fehler beim Speichern der Arbeitszeit',
+      color: 'red',
+    });
+  } finally {
+    setLoading(false);
+  }
+};
+
+  // Funktion zum Aktualisieren der Arbeitszeiten mit Duplifikaterkennung
+const refreshArbeitszeiten = async () => {
+  if (!selectedMitarbeiter || !selectedMonat) return;
+  
+  setLoading(true);
+  const monthString = selectedMonat.format("YYYY-MM");
+  try {
+    const response = await axios.get(
+      `http://localhost:8080/api/arbeitszeiten/${selectedMitarbeiter.ID}?monat=${monthString}`,
+      { headers: { Authorization: token } }
+    );
+    
+    // Entferne doppelte Einträge (basierend auf dem Datum)
+    const uniqueEntries = {};
+    response.data.forEach(item => {
+      const datumKey = dayjs(item.datum).format("YYYY-MM-DD");
+      
+      // Wenn bereits ein Eintrag für dieses Datum existiert:
+      if (uniqueEntries[datumKey]) {
+        // Wenn der aktuelle Eintrag eine Endzeit hat, aber der bereits vorhandene nicht, 
+        // dann verwende den aktuellen
+        if (item.endzeit && !uniqueEntries[datumKey].endzeit) {
+          uniqueEntries[datumKey] = item;
+        } 
+        // Wenn beide eine Endzeit haben oder beide keine haben, 
+        // nehme den mit der höheren ID (neueren Eintrag)
+        else if ((item.endzeit && uniqueEntries[datumKey].endzeit) || 
+                (!item.endzeit && !uniqueEntries[datumKey].endzeit)) {
+          if (item.id > uniqueEntries[datumKey].id) {
+            uniqueEntries[datumKey] = item;
+          }
+        }
+      } else {
+        // Wenn noch kein Eintrag für dieses Datum existiert, füge den aktuellen hinzu
+        uniqueEntries[datumKey] = item;
+      }
+    });
+    
+    // Konvertiere zurück zu einem Array
+    const uniqueArbeitszeiten = Object.values(uniqueEntries);
+    setArbeitszeiten(uniqueArbeitszeiten);
+    
+    // Aktualisiere den heutigen Eintrag
+    const heuteDatumKey = dayjs().format("YYYY-MM-DD");
+    const heutiger = uniqueEntries[heuteDatumKey] || null;
+    setHeutigerEintrag(heutiger);
+    
+    // Aktualisiere die Startzeit-Anzeige
+    if (heutiger && !heutiger.endzeit) {
+      setStartzeit(dayjs(heutiger.anfangszeit).format("HH:mm"));
+    } else {
       setStartzeit("");
       setEndzeit("");
-    } catch (err) {
-      console.error("Fehler beim Speichern der Zeiten:", err);
-      notifications.show({
-        title: 'Fehler',
-        message: err.response?.data?.error || 'Fehler beim Speichern der Arbeitszeit',
-        color: 'red',
-      });
-    } finally {
-      setLoading(false);
     }
-  };
-
-  const refreshArbeitszeiten = async () => {
-    if (!selectedMitarbeiter || !selectedMonat) return;
-    
-    setLoading(true);
-    const monthString = selectedMonat.format("YYYY-MM");
-    try {
-      const response = await axios.get(
-        `http://localhost:8080/api/arbeitszeiten/${selectedMitarbeiter.ID}?monat=${monthString}`,
-        { headers: { Authorization: token } }
-      );
-      setArbeitszeiten(response.data);
-      
-      // Aktualisiere den heutigen Eintrag
-      const heutiger = response.data.find(a => dayjs(a.datum).isSame(dayjs(), "day"));
-      setHeutigerEintrag(heutiger || null);
-      
-      // Aktualisiere die Startzeit-Anzeige
-      if (heutiger && !heutiger.endzeit) {
-        setStartzeit(dayjs(heutiger.anfangszeit).format("HH:mm"));
-      } else {
-        setStartzeit("");
-        setEndzeit("");
-      }
-    } catch (error) {
-      console.error("Fehler beim Aktualisieren der Arbeitszeiten:", error);
-      notifications.show({
-        title: 'Fehler',
-        message: 'Arbeitszeiten konnten nicht aktualisiert werden.',
-        color: 'red',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  } catch (error) {
+    console.error("Fehler beim Aktualisieren der Arbeitszeiten:", error);
+    notifications.show({
+      title: 'Fehler',
+      message: 'Arbeitszeiten konnten nicht aktualisiert werden.',
+      color: 'red',
+    });
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Nutzer kann nur sich selbst sehen, es sei denn, er ist Vorgesetzter oder Admin
   const filteredMitarbeiter = useMemo(() => {
@@ -592,177 +696,211 @@ const handleDeleteArbeitszeit = async (id) => {
 
       {/* Desktop-Tabelle (versteckt auf Mobilgeräten) */}
       {!isMobile && (
-        <Table highlightOnHover withBorder withColumnBorders>
-          <thead>
-            <tr>
-              <th style={centerTextStyle}>Datum</th>
-              <th style={centerTextStyle}>Start</th>
-              <th style={centerTextStyle}>Ende</th>
-              <th style={centerTextStyle}>Pause</th>
-              <th style={centerTextStyle}>Aktion</th>
-            </tr>
-          </thead>
-          <tbody>
-            {istAktuellerMonat && (
-              <tr>
-                <td style={centerTextStyle}>{dayjs().format("DD.MM.YYYY")}</td>
-                <td style={centerTextStyle}>
-                  {heutigerEintrag && !heutigerEintrag.endzeit ? (
-                    <Text>{startzeit}</Text>
-                  ) : (
-                    <TimeInput
-                      value={startzeit}
-                      onChange={(e) => setStartzeit(e.target.value)}
-                      placeholder="08:00"
-                    />
-                  )}
-                </td>
-                <td style={centerTextStyle}>
-                  {heutigerEintrag && !heutigerEintrag.endzeit ? (
-                    <TimeInput
-                      value={endzeit}
-                      onChange={(e) => setEndzeit(e.target.value)}
-                      placeholder="16:30"
-                    />
-                  ) : (
-                    <TimeInput
-                      value={endzeit}
-                      onChange={(e) => setEndzeit(e.target.value)}
-                      placeholder="16:30"
-                      disabled={!heutigerEintrag && !startzeit}
-                    />
-                  )}
-                </td>
-                <td style={centerTextStyle}>auto</td>
-                <td style={centerTextStyle}>
-                  <Button size="xs" onClick={handleSaveArbeitszeit}>
-                    {heutigerEintrag && !heutigerEintrag.endzeit ? "Ende speichern" : "Start speichern"}
-                  </Button>
-                </td>
-              </tr>
-            )}
-
-            {arbeitszeiten.length > 0 ? (
-              arbeitszeiten
-                .slice()
-                .sort((a, b) => dayjs(b.datum).diff(dayjs(a.datum)))
-                .map((a, index) => (
-                  <tr
-                    key={a.id}
-                    style={{
-                      backgroundColor: index % 2 === 1 ? "#f9f9f9" : "transparent",
-                    }}
-                  >
-                    <td style={centerTextStyle}>{dayjs(a.datum).format("DD.MM.YYYY")}</td>
-                    <td style={centerTextStyle}>
-                      {a.anfangszeit ? dayjs(a.anfangszeit).format("HH:mm") : "-"}
-                    </td>
-                    <td style={centerTextStyle}>
-                      {a.endzeit ? dayjs(a.endzeit).format("HH:mm") : "-"}
-                    </td>
-                    <td style={centerTextStyle}>{a.pause} min</td>
-                    <td style={centerTextStyle}>
-                      <Button size="xs" onClick={() => handleEdit(a)}>Bearbeiten</Button>
-                    </td>
-                  </tr>
-                ))
+  <Table highlightOnHover withBorder withColumnBorders>
+    <thead>
+      <tr>
+        <th style={centerTextStyle}>Datum</th>
+        <th style={centerTextStyle}>Start</th>
+        <th style={centerTextStyle}>Ende</th>
+        <th style={centerTextStyle}>Pause</th>
+        <th style={centerTextStyle}>Aktion</th>
+      </tr>
+    </thead>
+    <tbody>
+      {/* Aktuelle Eingabezeile nur anzeigen, wenn kein heutiger Eintrag existiert oder wenn der heutige Eintrag noch keine Endzeit hat */}
+      {istAktuellerMonat && (!heutigerEintrag || !heutigerEintrag.endzeit) && (
+        <tr>
+          <td style={centerTextStyle}>{dayjs().format("DD.MM.YYYY")}</td>
+          <td style={centerTextStyle}>
+            {heutigerEintrag && !heutigerEintrag.endzeit ? (
+              <Text>{startzeit}</Text>
             ) : (
-              <tr>
-                <td colSpan={5} style={{ textAlign: "center" }}>
-                  Keine Arbeitszeiten im ausgewählten Monat
-                </td>
-              </tr>
+              <TimeInput
+                value={startzeit}
+                onChange={(e) => setStartzeit(e.target.value)}
+                placeholder="08:00"
+              />
             )}
-          </tbody>
-        </Table>
+          </td>
+          <td style={centerTextStyle}>
+            {heutigerEintrag && !heutigerEintrag.endzeit ? (
+              <TimeInput
+                value={endzeit}
+                onChange={(e) => setEndzeit(e.target.value)}
+                placeholder="16:30"
+              />
+            ) : (
+              <TimeInput
+                value={endzeit}
+                onChange={(e) => setEndzeit(e.target.value)}
+                placeholder="16:30"
+                disabled={!heutigerEintrag && !startzeit}
+              />
+            )}
+          </td>
+          <td style={centerTextStyle}>auto</td>
+          <td style={centerTextStyle}>
+            <Button size="xs" onClick={handleSaveArbeitszeit}>
+              {heutigerEintrag && !heutigerEintrag.endzeit ? "Ende speichern" : "Start speichern"}
+            </Button>
+          </td>
+        </tr>
       )}
+
+      {/* Liste der Arbeitszeiten, aber nur Einträge anzeigen, die nicht der aktuelle Tag sind oder die bereits eine Endzeit haben */}
+      {arbeitszeiten.length > 0 ? (
+        arbeitszeiten
+          .slice()
+          .sort((a, b) => dayjs(b.datum).diff(dayjs(a.datum)))
+          .filter(a => {
+            // Wenn es der heutige Tag ist und kein heutigerEintrag existiert, trotzdem anzeigen
+            if (dayjs(a.datum).isSame(dayjs(), "day") && !heutigerEintrag) {
+              return true;
+            }
+            // Wenn es der heutige Tag ist und der Eintrag eine Endzeit hat, anzeigen
+            if (dayjs(a.datum).isSame(dayjs(), "day") && a.endzeit) {
+              return true;
+            }
+            // Wenn es der heutige Tag ist und der Eintrag keine Endzeit hat, aber nicht der heutigerEintrag ist, nicht anzeigen
+            if (dayjs(a.datum).isSame(dayjs(), "day") && !a.endzeit && heutigerEintrag && a.id !== heutigerEintrag.id) {
+              return false;
+            }
+            // Wenn es kein heutiger Tag ist, immer anzeigen
+            return !dayjs(a.datum).isSame(dayjs(), "day");
+          })
+          .map((a, index) => (
+            <tr
+              key={a.id}
+              style={{
+                backgroundColor: index % 2 === 1 ? "#f9f9f9" : "transparent",
+              }}
+            >
+              <td style={centerTextStyle}>{dayjs(a.datum).format("DD.MM.YYYY")}</td>
+              <td style={centerTextStyle}>
+                {a.anfangszeit ? dayjs(a.anfangszeit).format("HH:mm") : "-"}
+              </td>
+              <td style={centerTextStyle}>
+                {a.endzeit ? dayjs(a.endzeit).format("HH:mm") : "-"}
+              </td>
+              <td style={centerTextStyle}>{a.pause} min</td>
+              <td style={centerTextStyle}>
+                <Button size="xs" onClick={() => handleEdit(a)}>Bearbeiten</Button>
+              </td>
+            </tr>
+          ))
+      ) : (
+        <tr>
+          <td colSpan={5} style={{ textAlign: "center" }}>
+            Keine Arbeitszeiten im ausgewählten Monat
+          </td>
+        </tr>
+      )}
+    </tbody>
+  </Table>
+)}
       
       {/* Mobile Ansicht als Karten (nur auf Mobilgeräten sichtbar) */}
-      {isMobile && (
-        <Stack spacing="xs">
-          {/* Neue Zeiterfassung (nur für aktuellen Monat) */}
-          {istAktuellerMonat && (
-            <Card shadow="sm" withBorder p="xs">
-              <Card.Section withBorder p="xs" bg={theme.colors.blue[0]}>
-                <Group position="apart">
-                  <Text fw={500} ta="center" style={{width: '100%'}}>Neuer Eintrag: {dayjs().format("DD.MM.YYYY")}</Text>
-                </Group>
-              </Card.Section>
-              <Group position="apart" mt="xs">
-                {heutigerEintrag && !heutigerEintrag.endzeit ? (
-                  <Text size="sm" style={{ width: '45%' }}>
-                    <b>Start:</b> {startzeit}
-                  </Text>
-                ) : (
-                  <TimeInput
-                    label="Start"
-                    leftSection={<IconClock size={16} />}
-                    value={startzeit}
-                    onChange={(e) => setStartzeit(e.target.value)}
-                    placeholder="08:00"
-                    size="xs"
-                    style={{ width: '45%' }}
-                  />
-                )}
-                <TimeInput
-                  label="Ende"
-                  leftSection={<IconClock size={16} />}
-                  value={endzeit}
-                  onChange={(e) => setEndzeit(e.target.value)}
-                  placeholder="16:30"
-                  size="xs"
-                  style={{ width: '45%' }}
-                  disabled={!heutigerEintrag && !startzeit}
-                />
-              </Group>
-              <Button 
-                fullWidth 
-                mt="xs" 
-                size="xs" 
-                onClick={handleSaveArbeitszeit}
-              >
-                {heutigerEintrag && !heutigerEintrag.endzeit ? "Ende speichern" : "Start speichern"}
-              </Button>
-            </Card>
-          )}
-          
-          {/* Bestehende Einträge als Karten */}
-          {arbeitszeiten.length > 0 ? (
-            arbeitszeiten
-              .slice()
-              .sort((a, b) => dayjs(b.datum).diff(dayjs(a.datum)))
-              .map((a) => (
-                <Card key={a.id} shadow="sm" withBorder p="xs">
-                  <Card.Section withBorder p="xs" bg="gray.0">
-                    <Group position="apart">
-                      <Text fw={500} ta="center" style={{width: '100%'}}>{dayjs(a.datum).format("DD.MM.YYYY")}</Text>
-                      <ActionIcon size="sm" onClick={() => handleEdit(a)} style={{position: 'absolute', right: '12px'}}>
-                        <IconPencil size={16} />
-                      </ActionIcon>
-                    </Group>
-                  </Card.Section>
-                  <SimpleGrid cols={2} spacing="xs" mt="xs">
-                    <Text size="sm" ta="center">
-                      <b>Start:</b> {a.anfangszeit ? dayjs(a.anfangszeit).format("HH:mm") : "-"}
-                    </Text>
-                    <Text size="sm" ta="center">
-                      <b>Ende:</b> {a.endzeit ? dayjs(a.endzeit).format("HH:mm") : "-"}
-                    </Text>
-                    <Text size="sm" span={2} ta="center">
-                      <b>Pause:</b> {a.pause} min
-                    </Text>
-                  </SimpleGrid>
-                </Card>
-              ))
+{isMobile && (
+  <Stack spacing="xs">
+    {/* Neue Zeiterfassung (nur für aktuellen Monat und nur wenn noch kein Eintrag mit Endzeit existiert) */}
+    {istAktuellerMonat && (!heutigerEintrag || !heutigerEintrag.endzeit) && (
+      <Card shadow="sm" withBorder p="xs">
+        <Card.Section withBorder p="xs" bg={theme.colors.blue[0]}>
+          <Group position="apart">
+            <Text fw={500} ta="center" style={{width: '100%'}}>Neuer Eintrag: {dayjs().format("DD.MM.YYYY")}</Text>
+          </Group>
+        </Card.Section>
+        <Group position="apart" mt="xs">
+          {heutigerEintrag && !heutigerEintrag.endzeit ? (
+            <Text size="sm" style={{ width: '45%' }}>
+              <b>Start:</b> {startzeit}
+            </Text>
           ) : (
-            <Card shadow="sm" withBorder p="md">
-              <Text ta="center" c="dimmed">
-                Keine Arbeitszeiten im ausgewählten Monat
-              </Text>
-            </Card>
+            <TimeInput
+              label="Start"
+              leftSection={<IconClock size={16} />}
+              value={startzeit}
+              onChange={(e) => setStartzeit(e.target.value)}
+              placeholder="08:00"
+              size="xs"
+              style={{ width: '45%' }}
+            />
           )}
-        </Stack>
-      )}
+          <TimeInput
+            label="Ende"
+            leftSection={<IconClock size={16} />}
+            value={endzeit}
+            onChange={(e) => setEndzeit(e.target.value)}
+            placeholder="16:30"
+            size="xs"
+            style={{ width: '45%' }}
+            disabled={!heutigerEintrag && !startzeit}
+          />
+        </Group>
+        <Button 
+          fullWidth 
+          mt="xs" 
+          size="xs" 
+          onClick={handleSaveArbeitszeit}
+        >
+          {heutigerEintrag && !heutigerEintrag.endzeit ? "Ende speichern" : "Start speichern"}
+        </Button>
+      </Card>
+    )}
+    
+    {/* Bestehende Einträge als Karten - mit der gleichen Filterlogik wie bei der Tabelle */}
+    {arbeitszeiten.length > 0 ? (
+      arbeitszeiten
+        .slice()
+        .sort((a, b) => dayjs(b.datum).diff(dayjs(a.datum)))
+        .filter(a => {
+          // Wenn es der heutige Tag ist und kein heutigerEintrag existiert, trotzdem anzeigen
+          if (dayjs(a.datum).isSame(dayjs(), "day") && !heutigerEintrag) {
+            return true;
+          }
+          // Wenn es der heutige Tag ist und der Eintrag eine Endzeit hat, anzeigen
+          if (dayjs(a.datum).isSame(dayjs(), "day") && a.endzeit) {
+            return true;
+          }
+          // Wenn es der heutige Tag ist und der Eintrag keine Endzeit hat, aber nicht der heutigerEintrag ist, nicht anzeigen
+          if (dayjs(a.datum).isSame(dayjs(), "day") && !a.endzeit && heutigerEintrag && a.id !== heutigerEintrag.id) {
+            return false;
+          }
+          // Wenn es kein heutiger Tag ist, immer anzeigen
+          return !dayjs(a.datum).isSame(dayjs(), "day");
+        })
+        .map((a) => (
+          <Card key={a.id} shadow="sm" withBorder p="xs">
+            <Card.Section withBorder p="xs" bg="gray.0">
+              <Group position="apart">
+                <Text fw={500} ta="center" style={{width: '100%'}}>{dayjs(a.datum).format("DD.MM.YYYY")}</Text>
+                <ActionIcon size="sm" onClick={() => handleEdit(a)} style={{position: 'absolute', right: '12px'}}>
+                  <IconPencil size={16} />
+                </ActionIcon>
+              </Group>
+            </Card.Section>
+            <SimpleGrid cols={2} spacing="xs" mt="xs">
+              <Text size="sm" ta="center">
+                <b>Start:</b> {a.anfangszeit ? dayjs(a.anfangszeit).format("HH:mm") : "-"}
+              </Text>
+              <Text size="sm" ta="center">
+                <b>Ende:</b> {a.endzeit ? dayjs(a.endzeit).format("HH:mm") : "-"}
+              </Text>
+              <Text size="sm" span={2} ta="center">
+                <b>Pause:</b> {a.pause} min
+              </Text>
+            </SimpleGrid>
+          </Card>
+        ))
+    ) : (
+      <Card shadow="sm" withBorder p="md">
+        <Text ta="center" c="dimmed">
+          Keine Arbeitszeiten im ausgewählten Monat
+        </Text>
+      </Card>
+    )}
+  </Stack>
+)}
     </Paper>
   );
 
