@@ -46,11 +46,29 @@ function Dashboard() {
     }
   }, [token]);
 
-  const userRole = useMemo(() => {
-    const rolleFromToken = decoded?.rolle;
-    return rolleFromToken !== undefined ? rolleFromToken : getRolle();
-  }, [decoded]);
+const userRole = useMemo(() => {
+  // Überprüfen Sie sowohl "rolle" als auch "RechteID" im Token
+  const rolleFromToken = decoded?.rolle || decoded?.RechteID || decoded?.rechte_id;
+  
+  // Debugging-Log - können Sie später entfernen
+  console.log("Token Rolle:", rolleFromToken);
+  console.log("getRolle():", getRolle());
+  
+  // Wenn keine gültige Rolle im Token ist, nutzen Sie getRolle() als Fallback
+  return rolleFromToken !== undefined ? rolleFromToken : getRolle();
+}, [decoded]);
 
+// Ändere die Prüfung für Admin/Vorgesetzter-Berechtigungen
+// Wandle Stringwerte in Zahlen um, falls nötig
+const isAdmin = useMemo(() => {
+  const role = typeof userRole === 'string' ? parseInt(userRole) : userRole;
+  return role >= 3;
+}, [userRole]);
+
+const isVorgesetzter = useMemo(() => {
+  const role = typeof userRole === 'string' ? parseInt(userRole) : userRole;
+  return role >= 2;
+}, [userRole]);
   const theme = useMantineTheme();
   const isMobile = useMediaQuery(`(max-width: ${theme.breakpoints.sm})`);
   const isExtraSmall = useMediaQuery(`(max-width: ${theme.breakpoints.xs})`);
@@ -70,8 +88,7 @@ function Dashboard() {
   const [mobileSidebarOpened, { toggle: toggleMobileSidebar }] = useDisclosure(false);
   const [editModal, setEditModal] = useState({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" });
 
-  const isAdmin = userRole >= 3;
-  const isVorgesetzter = userRole >= 2;
+
   const centerTextStyle = { textAlign: 'center' };
 
   useEffect(() => {
@@ -367,8 +384,6 @@ const handleSaveEdit = async () => {
   };
 
   // Überarbeitete Funktion für das Speichern der Arbeitszeit
- // Überarbeitete Funktion für das Speichern der Arbeitszeit
-// Überarbeitete Funktion für das Speichern der Arbeitszeit
 const handleSaveArbeitszeit = async () => {
   // Prüfen, ob ein Mitarbeiter ausgewählt ist
   if (!selectedMitarbeiter) {
