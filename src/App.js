@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { MantineProvider, Box, AppShell } from '@mantine/core';
+import { MantineProvider, AppShell } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import LoginPage from './Pages/LoginPage';
 import Dashboard from './Pages/Dashboard';
@@ -17,12 +17,16 @@ function App() {
             <Notifications position="top-right" />
             <AppShell
                 padding="md"
-                footer={<Footer />}
-                styles={{
+                footer={{ height: 50 }}
+                styles={(theme) => ({
                     main: {
-                        paddingBottom: '50px', // Platz für den Footer
+                        paddingBottom: 'calc(var(--mantine-spacing-md) )',
                     },
-                }}
+                    footer: {
+                        paddingTop: 0,
+                        paddingBottom: 0,
+                    },
+                })}
             >
                 <Router>
                     <Routes>
@@ -37,6 +41,7 @@ function App() {
                         <Route path="/passwort-vergessen" element={<PasswortVergessen />} />
                     </Routes>
                 </Router>
+                <Footer />
             </AppShell>
         </MantineProvider>
     );

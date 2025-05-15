@@ -1,24 +1,19 @@
 import React from 'react';
-import { Text, Box, Group, Anchor } from '@mantine/core';
+import { Text, Group, Anchor, Box } from '@mantine/core';
 
-function FooterExact() {
+function Footer() {
   const currentYear = new Date().getFullYear();
 
   return (
     <Box
-      component="footer"
-      sx={{
-        position: 'fixed',
-        bottom: 0,
-        left: 0,
+      style={{
         width: '100%',
-        backgroundColor: 'white',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: '10px 0',
         borderTop: '1px solid #e9ecef',
-        padding: '8px 16px',
-        textAlign: 'center',
-        fontSize: '14px',
-        color: '#6c757d',
-        zIndex: 100
+        backgroundColor: 'white'
       }}
     >
       <Group position="center" spacing="xs">
@@ -29,7 +24,7 @@ function FooterExact() {
           size="sm" 
           href="#" 
           target="_blank"
-          sx={{ color: '#4dabf7' }}
+          color="blue"
         >
           Datenschutz
         </Anchor>
@@ -37,7 +32,7 @@ function FooterExact() {
           size="sm" 
           href="#" 
           target="_blank"
-          sx={{ color: '#4dabf7' }}
+          color="blue"
         >
           Impressum
         </Anchor>
@@ -45,7 +40,7 @@ function FooterExact() {
           size="sm" 
           href="#" 
           target="_blank"
-          sx={{ color: '#4dabf7' }}
+          color="blue"
         >
           Kontakt
         </Anchor>
@@ -54,4 +49,4 @@ function FooterExact() {
   );
 }
 
-export default FooterExact;
+export default Footer;
