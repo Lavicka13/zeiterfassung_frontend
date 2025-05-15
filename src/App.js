@@ -17,7 +17,7 @@ function App() {
             <Notifications position="top-right" />
             <AppShell
                 padding="md"
-                footer={{ height: 50 }}
+                footer={<Footer />}
                 styles={(theme) => ({
                     main: {
                         paddingBottom: 'calc(var(--mantine-spacing-md) )',

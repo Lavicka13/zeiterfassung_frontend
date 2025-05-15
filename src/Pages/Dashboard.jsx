@@ -26,7 +26,7 @@ import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { MonthPicker, DatesProvider, TimeInput } from "@mantine/dates";
 import { notifications } from '@mantine/notifications';
 import { jwtDecode } from "jwt-decode";
-import { IconMenu2, IconClock, IconUser, IconPencil } from '@tabler/icons-react';
+import { IconMenu2, IconClock, IconUser, IconPencil, IconCalendarStats } from '@tabler/icons-react';
 import "dayjs/locale/de";
 import "@mantine/dates/styles.css";
 import axios from "axios";
@@ -87,7 +87,11 @@ const isVorgesetzter = useMemo(() => {
   const [loading, setLoading] = useState(false);
   const [mobileSidebarOpened, { toggle: toggleMobileSidebar }] = useDisclosure(false);
   const [editModal, setEditModal] = useState({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" });
-
+  const [monatlicheStatistik, setMonatlicheStatistik] = useState({
+  gesamtStunden: 0,
+  arbeitsTage: 0,
+  durchschnittProTag: 0,
+});
 
   const centerTextStyle = { textAlign: 'center' };
 
@@ -378,6 +382,44 @@ const handleSaveEdit = async () => {
   }
 };
 
+const berechneMontlicheStatistik = () => {
+  let gesamtStunden = 0;
+  let arbeitsTage = 0;
+
+    const abgeschlosseneZeiten = arbeitszeiten.filter(a => a.endzeit);
+
+     abgeschlosseneZeiten.forEach(zeit => {
+    // Berechne die Arbeitszeit in Stunden
+    const start = dayjs(zeit.anfangszeit);
+    const ende = dayjs(zeit.endzeit);
+    
+    // Berechne die Differenz in Stunden und ziehe die Pause ab
+    const pauseInStunden = zeit.pause / 60;
+    const stundenDifferenz = ende.diff(start, 'hour', true) - pauseInStunden;
+    
+    if (stundenDifferenz > 0) {
+      gesamtStunden += stundenDifferenz;
+      arbeitsTage++;
+    }
+  });
+
+  const durchschnittProTag = arbeitsTage > 0 ? gesamtStunden / arbeitsTage : 0;
+
+  setMonatlicheStatistik({
+    gesamtStunden: gesamtStunden.toFixed(2),
+    arbeitsTage,
+    durchschnittProTag: durchschnittProTag.toFixed(2)
+  });
+};
+
+// Füge diesen useEffect nach dem useEffect hinzu, der die Arbeitszeiten lädt
+useEffect(() => {
+  if (arbeitszeiten.length > 0) {
+    berechneMontlicheStatistik();
+  }
+}, [arbeitszeiten]);
+
+
   const handleLogout = () => {
     localStorage.removeItem("token");
     navigate("/login");
@@ -580,7 +622,9 @@ const refreshArbeitszeiten = async () => {
   // Sidebar-Inhalt, wiederverwendbar für Desktop und Mobile
   const SidebarContent = () => (
     <>
+      {filteredMitarbeiter.length > 1 && (
       <Title order={4} mb="md">Mitarbeiter</Title>
+    )}
       {filteredMitarbeiter.map((m) => (
         <Button
           key={m.ID}
@@ -640,7 +684,26 @@ const refreshArbeitszeiten = async () => {
             ? `${selectedMitarbeiter.Vorname} ${selectedMitarbeiter.Nachname}`
             : "Mitarbeiter auswählen"}
         </Title>
+      </Group>
 
+      {/* Export-Menu für Monatsbericht - nur auf größeren Bildschirmen */}
+      <Group position="center" mt="md" mb="sm">
+        {!isExtraSmall && (
+          <Menu shadow="md" width={220}>
+            <Menu.Target>
+              <Button size={isMobile ? "xs" : "sm"}>Monatsbericht</Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item onClick={() => handleExport("pdf_monat")}>
+                PDF
+              </Menu.Item>
+              <Menu.Item onClick={() => handleExport("csv_monat")}>
+                CSV
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+          
+        )}
         {/* Export-Menu für Jahresbericht - nur auf größeren Bildschirmen */}
         {!isExtraSmall && (
           <Menu shadow="md" width={220}>
@@ -652,31 +715,6 @@ const refreshArbeitszeiten = async () => {
                 PDF
               </Menu.Item>
               <Menu.Item onClick={() => handleExport("csv_jahr")}>
-                CSV
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
-        )}
-      </Group>
-
-      <Group position="center" mb="md">
-        <Badge color="blue" variant="light" size={isMobile ? "md" : "lg"}>
-          Aktueller Monat: {selectedMonat.format("MMMM YYYY")}
-        </Badge>
-      </Group>
-
-      {/* Export-Menu für Monatsbericht - nur auf größeren Bildschirmen */}
-      <Group position="right" mt="md" mb="sm">
-        {!isExtraSmall && (
-          <Menu shadow="md" width={220}>
-            <Menu.Target>
-              <Button size={isMobile ? "xs" : "sm"}>Monatsbericht</Button>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Item onClick={() => handleExport("pdf_monat")}>
-                PDF
-              </Menu.Item>
-              <Menu.Item onClick={() => handleExport("csv_monat")}>
                 CSV
               </Menu.Item>
             </Menu.Dropdown>
@@ -710,108 +748,147 @@ const refreshArbeitszeiten = async () => {
       )}
 
       {/* Desktop-Tabelle (versteckt auf Mobilgeräten) */}
-      {!isMobile && (
-  <Table highlightOnHover withBorder withColumnBorders>
-    <thead>
-      <tr>
-        <th style={centerTextStyle}>Datum</th>
-        <th style={centerTextStyle}>Start</th>
-        <th style={centerTextStyle}>Ende</th>
-        <th style={centerTextStyle}>Pause</th>
-        <th style={centerTextStyle}>Aktion</th>
-      </tr>
-    </thead>
-    <tbody>
-      {/* Aktuelle Eingabezeile nur anzeigen, wenn kein heutiger Eintrag existiert oder wenn der heutige Eintrag noch keine Endzeit hat */}
-      {istAktuellerMonat && (!heutigerEintrag || !heutigerEintrag.endzeit) && (
+    {!isMobile && (
+  <>
+    <Box mb="md">
+      <Paper p="md" withBorder shadow="xs" style={{ backgroundColor: '#f9fafb' }}>
+        <Group position="apart">
+          <Group>
+            <IconCalendarStats size={24} color={theme.colors.blue[6]} />
+           <Title order={5}>Monatsübersicht {selectedMonat.locale('de').format("MMMM YYYY")}</Title>
+          </Group>
+          <Group>
+            <Badge color="blue" size="lg">
+              Gesamtarbeitszeit: {monatlicheStatistik.gesamtStunden} Stunden
+            </Badge>
+            <Badge color="teal" size="lg">
+              Arbeitstage: {monatlicheStatistik.arbeitsTage}
+            </Badge>
+            <Badge color="grape" size="lg">
+              Ø pro Tag: {monatlicheStatistik.durchschnittProTag} Stunden
+            </Badge>
+          </Group>
+        </Group>
+      </Paper>
+    </Box>
+  
+    <Table highlightOnHover withBorder withColumnBorders>
+      <thead>
         <tr>
-          <td style={centerTextStyle}>{dayjs().format("DD.MM.YYYY")}</td>
-          <td style={centerTextStyle}>
-            {heutigerEintrag && !heutigerEintrag.endzeit ? (
-              <Text>{startzeit}</Text>
-            ) : (
-              <TimeInput
-                value={startzeit}
-                onChange={(e) => setStartzeit(e.target.value)}
-                placeholder="08:00"
-              />
-            )}
-          </td>
-          <td style={centerTextStyle}>
-            {heutigerEintrag && !heutigerEintrag.endzeit ? (
-              <TimeInput
-                value={endzeit}
-                onChange={(e) => setEndzeit(e.target.value)}
-                placeholder="16:30"
-              />
-            ) : (
-              <TimeInput
-                value={endzeit}
-                onChange={(e) => setEndzeit(e.target.value)}
-                placeholder="16:30"
-                disabled={!heutigerEintrag && !startzeit}
-              />
-            )}
-          </td>
-          <td style={centerTextStyle}>auto</td>
-          <td style={centerTextStyle}>
-            <Button size="xs" onClick={handleSaveArbeitszeit}>
-              {heutigerEintrag && !heutigerEintrag.endzeit ? "Ende speichern" : "Start speichern"}
-            </Button>
-          </td>
+          <th style={centerTextStyle}>Datum</th>
+          <th style={centerTextStyle}>Start</th>
+          <th style={centerTextStyle}>Ende</th>
+          <th style={centerTextStyle}>Pause</th>
+          <th style={centerTextStyle}>Arbeitszeit</th>
+          <th style={centerTextStyle}>Aktion</th>
         </tr>
-      )}
+      </thead>
+      <tbody>
+        {/* Aktuelle Eingabezeile nur anzeigen, wenn kein heutiger Eintrag existiert oder wenn der heutige Eintrag noch keine Endzeit hat */}
+        {istAktuellerMonat && (!heutigerEintrag || !heutigerEintrag.endzeit) && (
+          <tr>
+            <td style={centerTextStyle}>{dayjs().format("DD.MM.YYYY")}</td>
+            <td style={centerTextStyle}>
+              {heutigerEintrag && !heutigerEintrag.endzeit ? (
+                <Text>{startzeit}</Text>
+              ) : (
+                <TimeInput
+                  value={startzeit}
+                  onChange={(e) => setStartzeit(e.target.value)}
+                  placeholder="08:00"
+                />
+              )}
+            </td>
+            <td style={centerTextStyle}>
+              {heutigerEintrag && !heutigerEintrag.endzeit ? (
+                <TimeInput
+                  value={endzeit}
+                  onChange={(e) => setEndzeit(e.target.value)}
+                  placeholder="16:30"
+                />
+              ) : (
+                <TimeInput
+                  value={endzeit}
+                  onChange={(e) => setEndzeit(e.target.value)}
+                  placeholder="16:30"
+                  disabled={!heutigerEintrag && !startzeit}
+                />
+              )}
+            </td>
+            <td style={centerTextStyle}>auto</td>
+            <td style={centerTextStyle}>-</td>
+            <td style={centerTextStyle}>
+              <Button size="xs" onClick={handleSaveArbeitszeit}>
+                {heutigerEintrag && !heutigerEintrag.endzeit ? "Ende speichern" : "Start speichern"}
+              </Button>
+            </td>
+          </tr>
+        )}
 
-      {/* Liste der Arbeitszeiten, aber nur Einträge anzeigen, die nicht der aktuelle Tag sind oder die bereits eine Endzeit haben */}
-      {arbeitszeiten.length > 0 ? (
-        arbeitszeiten
-          .slice()
-          .sort((a, b) => dayjs(b.datum).diff(dayjs(a.datum)))
-          .filter(a => {
-            // Wenn es der heutige Tag ist und kein heutigerEintrag existiert, trotzdem anzeigen
-            if (dayjs(a.datum).isSame(dayjs(), "day") && !heutigerEintrag) {
-              return true;
-            }
-            // Wenn es der heutige Tag ist und der Eintrag eine Endzeit hat, anzeigen
-            if (dayjs(a.datum).isSame(dayjs(), "day") && a.endzeit) {
-              return true;
-            }
-            // Wenn es der heutige Tag ist und der Eintrag keine Endzeit hat, aber nicht der heutigerEintrag ist, nicht anzeigen
-            if (dayjs(a.datum).isSame(dayjs(), "day") && !a.endzeit && heutigerEintrag && a.id !== heutigerEintrag.id) {
-              return false;
-            }
-            // Wenn es kein heutiger Tag ist, immer anzeigen
-            return !dayjs(a.datum).isSame(dayjs(), "day");
-          })
-          .map((a, index) => (
-            <tr
-              key={a.id}
-              style={{
-                backgroundColor: index % 2 === 1 ? "#f9f9f9" : "transparent",
-              }}
-            >
-              <td style={centerTextStyle}>{dayjs(a.datum).format("DD.MM.YYYY")}</td>
-              <td style={centerTextStyle}>
-                {a.anfangszeit ? dayjs(a.anfangszeit).format("HH:mm") : "-"}
-              </td>
-              <td style={centerTextStyle}>
-                {a.endzeit ? dayjs(a.endzeit).format("HH:mm") : "-"}
-              </td>
-              <td style={centerTextStyle}>{a.pause} min</td>
-              <td style={centerTextStyle}>
-                <Button size="xs" onClick={() => handleEdit(a)}>Bearbeiten</Button>
-              </td>
-            </tr>
-          ))
-      ) : (
-        <tr>
-          <td colSpan={5} style={{ textAlign: "center" }}>
-            Keine Arbeitszeiten im ausgewählten Monat
-          </td>
-        </tr>
-      )}
-    </tbody>
-  </Table>
+        {/* Liste der Arbeitszeiten, aber nur Einträge anzeigen, die nicht der aktuelle Tag sind oder die bereits eine Endzeit haben */}
+        {arbeitszeiten.length > 0 ? (
+          arbeitszeiten
+            .slice()
+            .sort((a, b) => dayjs(b.datum).diff(dayjs(a.datum)))
+            .filter(a => {
+              // Wenn es der heutige Tag ist und kein heutigerEintrag existiert, trotzdem anzeigen
+              if (dayjs(a.datum).isSame(dayjs(), "day") && !heutigerEintrag) {
+                return true;
+              }
+              // Wenn es der heutige Tag ist und der Eintrag eine Endzeit hat, anzeigen
+              if (dayjs(a.datum).isSame(dayjs(), "day") && a.endzeit) {
+                return true;
+              }
+              // Wenn es der heutige Tag ist und der Eintrag keine Endzeit hat, aber nicht der heutigerEintrag ist, nicht anzeigen
+              if (dayjs(a.datum).isSame(dayjs(), "day") && !a.endzeit && heutigerEintrag && a.id !== heutigerEintrag.id) {
+                return false;
+              }
+              // Wenn es kein heutiger Tag ist, immer anzeigen
+              return !dayjs(a.datum).isSame(dayjs(), "day");
+            })
+            .map((a, index) => {
+              // Berechne die Arbeitszeit in Stunden, wenn eine Endzeit vorhanden ist
+              let arbeitszeitText = "-";
+              if (a.endzeit) {
+                const start = dayjs(a.anfangszeit);
+                const ende = dayjs(a.endzeit);
+                const pauseInStunden = a.pause / 60;
+                const stundenDifferenz = ende.diff(start, 'hour', true) - pauseInStunden;
+                arbeitszeitText = stundenDifferenz > 0 ? stundenDifferenz.toFixed(2) + " h" : "-";
+              }
+              
+              return (
+                <tr
+                  key={a.id}
+                  style={{
+                    backgroundColor: index % 2 === 1 ? "#f9f9f9" : "transparent",
+                  }}
+                >
+                  <td style={centerTextStyle}>{dayjs(a.datum).format("DD.MM.YYYY")}</td>
+                  <td style={centerTextStyle}>
+                    {a.anfangszeit ? dayjs(a.anfangszeit).format("HH:mm") : "-"}
+                  </td>
+                  <td style={centerTextStyle}>
+                    {a.endzeit ? dayjs(a.endzeit).format("HH:mm") : "-"}
+                  </td>
+                  <td style={centerTextStyle}>{a.pause} min</td>
+                  <td style={centerTextStyle}>{arbeitszeitText}</td>
+                  <td style={centerTextStyle}>
+                    <Button size="xs" onClick={() => handleEdit(a)}>Bearbeiten</Button>
+                  </td>
+                </tr>
+              );
+            })
+        ) : (
+          <tr>
+            <td colSpan={6} style={{ textAlign: "center" }}>
+              Keine Arbeitszeiten im ausgewählten Monat
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </Table>
+  </>
 )}
       
       {/* Mobile Ansicht als Karten (nur auf Mobilgeräten sichtbar) */}
