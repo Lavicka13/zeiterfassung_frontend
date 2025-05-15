@@ -350,7 +350,7 @@ function Verwaltung() {
         variant="light"
         onClick={() => setResetModal({ open: true, user: m })}
       >
-        🔒 Reset
+        🔒 zurücksetzen
       </Button>
     </Group>
   </td>

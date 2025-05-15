@@ -1045,7 +1045,7 @@ const refreshArbeitszeiten = async () => {
   opened={editModal.open}
   onClose={() => setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" })}
   title="Arbeitszeit bearbeiten"
-  size={isMobile ? "xs" : "md"}
+  size={isMobile ? "xs" : "xl"}
 >
   <LoadingOverlay visible={loading} overlayBlur={2} />
   
@@ -1079,13 +1079,14 @@ const refreshArbeitszeiten = async () => {
       </Text>
       
       <Group position="center" mb="md">
+         <Button onClick={handleSaveEdit}>Speichern</Button>
         <Button 
           variant="outline" 
           onClick={() => setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" })}
         >
           Abbrechen
         </Button>
-        <Button onClick={handleSaveEdit}>Speichern</Button>
+       
       </Group>
       
       {/* Trennlinie */}

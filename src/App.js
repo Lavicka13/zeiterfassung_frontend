@@ -7,6 +7,7 @@ import Dashboard from './Pages/Dashboard';
 import Verwaltung from './Pages/Verwaltung';
 import PasswortVergessen from "./Pages/PasswortVergessen";
 import Footer from './components/Footer';
+import Header from './components/Header';
 import { isLoggedIn, getRolle } from './utils/auth';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
@@ -21,6 +22,7 @@ function App() {
                 styles={(theme) => ({
                     main: {
                         paddingBottom: 'calc(var(--mantine-spacing-md) )',
+                        position: 'relative', // für absolute Positionierung des Headers
                     },
                     footer: {
                         paddingTop: 0,
@@ -29,6 +31,9 @@ function App() {
                 })}
             >
                 <Router>
+                    {/* Header ist absolut in der oberen rechten Ecke positioniert */}
+                    <Header />
+                    
                     <Routes>
                         <Route path="/" element={<Navigate to="/login" />} />
                         <Route path="/login" element={<LoginPage />} />
