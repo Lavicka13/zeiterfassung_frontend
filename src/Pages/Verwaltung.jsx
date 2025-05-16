@@ -492,7 +492,7 @@ function Verwaltung() {
   );
 
   return (
-    <Container size="xl" px={isMobile ? "xs" : "md"} py="lg">
+    <Container size="xxl" px={isMobile ? "xs" : "md"} py="xl" mt="xl">
       <Paper shadow="xs" radius="md" p={isMobile ? "sm" : "md"} pos="relative" withBorder>
         <LoadingOverlay visible={loading} overlayBlur={2} />
         
@@ -501,14 +501,6 @@ function Verwaltung() {
             <Title order={2} size={isMobile ? "h3" : "h2"} mb={5}>Nutzerverwaltung</Title>
             <Text color="dimmed" size="sm">Verwalten Sie Ihr Team und deren Berechtigungen</Text>
           </div>
-          <Button 
-            onClick={goToDashboard} 
-            variant="subtle" 
-            leftIcon={<IconChevronLeft size={16} />}
-            color="gray"
-          >
-            Zurück zum Dashboard
-          </Button>
         </Group>
 
         <Divider mb="xl" />
@@ -857,6 +849,15 @@ function Verwaltung() {
             </>
           )}
         </Modal>
+        <Button 
+            onClick={goToDashboard} 
+            variant="subtle" 
+            mt="xl"
+            leftIcon={<IconChevronLeft size={16} />}
+            color="gray"
+          >
+            Zurück zum Dashboard
+          </Button>
       </Paper>
     </Container>
   );
