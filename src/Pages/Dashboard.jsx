@@ -1,3 +1,5 @@
+// Geänderte Dashboard.jsx-Datei mit neuem Button für Eintragserfassung mit Datumsauswahl
+
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -23,10 +25,10 @@ import {
   Box
 } from "@mantine/core";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
-import { MonthPicker, DatesProvider, TimeInput } from "@mantine/dates";
+import { MonthPicker, DatesProvider, TimeInput, DatePickerInput } from "@mantine/dates";
 import { notifications } from '@mantine/notifications';
 import { jwtDecode } from "jwt-decode";
-import { IconMenu2, IconClock, IconUser, IconPencil, IconCalendarStats } from '@tabler/icons-react';
+import { IconMenu2, IconClock, IconUser, IconPencil, IconCalendarStats, IconPlus } from '@tabler/icons-react';
 import "dayjs/locale/de";
 import "@mantine/dates/styles.css";
 import axios from "axios";
@@ -46,29 +48,29 @@ function Dashboard() {
     }
   }, [token]);
 
-const userRole = useMemo(() => {
-  // Überprüfen Sie sowohl "rolle" als auch "RechteID" im Token
-  const rolleFromToken = decoded?.rolle || decoded?.RechteID || decoded?.rechte_id;
-  
-  // Debugging-Log - können Sie später entfernen
-  console.log("Token Rolle:", rolleFromToken);
-  console.log("getRolle():", getRolle());
-  
-  // Wenn keine gültige Rolle im Token ist, nutzen Sie getRolle() als Fallback
-  return rolleFromToken !== undefined ? rolleFromToken : getRolle();
-}, [decoded]);
+  const userRole = useMemo(() => {
+    // Überprüfen Sie sowohl "rolle" als auch "RechteID" im Token
+    const rolleFromToken = decoded?.rolle || decoded?.RechteID || decoded?.rechte_id;
+    
+    // Debugging-Log - können Sie später entfernen
+    console.log("Token Rolle:", rolleFromToken);
+    console.log("getRolle():", getRolle());
+    
+    // Wenn keine gültige Rolle im Token ist, nutzen Sie getRolle() als Fallback
+    return rolleFromToken !== undefined ? rolleFromToken : getRolle();
+  }, [decoded]);
 
-// Ändere die Prüfung für Admin/Vorgesetzter-Berechtigungen
-// Wandle Stringwerte in Zahlen um, falls nötig
-const isAdmin = useMemo(() => {
-  const role = typeof userRole === 'string' ? parseInt(userRole) : userRole;
-  return role >= 3;
-}, [userRole]);
+  // Ändere die Prüfung für Admin/Vorgesetzter-Berechtigungen
+  // Wandle Stringwerte in Zahlen um, falls nötig
+  const isAdmin = useMemo(() => {
+    const role = typeof userRole === 'string' ? parseInt(userRole) : userRole;
+    return role >= 3;
+  }, [userRole]);
 
-const isVorgesetzter = useMemo(() => {
-  const role = typeof userRole === 'string' ? parseInt(userRole) : userRole;
-  return role >= 2;
-}, [userRole]);
+  const isVorgesetzter = useMemo(() => {
+    const role = typeof userRole === 'string' ? parseInt(userRole) : userRole;
+    return role >= 2;
+  }, [userRole]);
   const theme = useMantineTheme();
   const isMobile = useMediaQuery(`(max-width: ${theme.breakpoints.sm})`);
   const isExtraSmall = useMediaQuery(`(max-width: ${theme.breakpoints.xs})`);
@@ -88,10 +90,18 @@ const isVorgesetzter = useMemo(() => {
   const [mobileSidebarOpened, { toggle: toggleMobileSidebar }] = useDisclosure(false);
   const [editModal, setEditModal] = useState({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" });
   const [monatlicheStatistik, setMonatlicheStatistik] = useState({
-  gesamtStunden: 0,
-  arbeitsTage: 0,
-  durchschnittProTag: 0,
-});
+    gesamtStunden: 0,
+    arbeitsTage: 0,
+    durchschnittProTag: 0,
+  });
+
+  // Neuer State für den Modal zur Erstellung neuer Einträge
+  const [newEntryModal, setNewEntryModal] = useState({
+    open: false,
+    datum: new Date(),
+    anfangszeit: "",
+    endzeit: "",
+  });
 
   const centerTextStyle = { textAlign: 'center' };
 
@@ -237,45 +247,45 @@ const isVorgesetzter = useMemo(() => {
     }
   };
 
-  // Zuerst fügen wir eine neue Funktion zum Löschen eines Arbeitszeit-Eintrags hinzu
-const handleDeleteArbeitszeit = async (id) => {
-  if (!id) return;
-  
-  setLoading(true);
-  try {
-    // Verbesserte Fehlerbehandlung und Logging
-    console.log("Versuche Arbeitszeit mit ID zu löschen:", id);
+  // Funktion zum Löschen eines Arbeitszeit-Eintrags
+  const handleDeleteArbeitszeit = async (id) => {
+    if (!id) return;
     
-    // Versuche einen anderen API-Pfad, der konsistent mit deinen anderen API-Endpunkten ist
-    const response = await axios.delete(`http://localhost:8080/api/arbeitszeiten/${id}`, {
-      headers: { Authorization: token }
-    });
-    
-    console.log("Antwort vom Server:", response.data);
-    
-    notifications.show({
-      title: 'Erfolg',
-      message: 'Arbeitszeit-Eintrag wurde erfolgreich gelöscht.',
-      color: 'green',
-    });
-    
-    setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" });
-    await refreshArbeitszeiten();
-  } catch (error) {
-    // Verbesserte Fehlerprotokollierung
-    console.error("Fehler beim Löschen:", error);
-    console.error("Fehlerdetails:", error.response?.data);
-    console.error("Status-Code:", error.response?.status);
-    
-    notifications.show({
-      title: 'Fehler',
-      message: error.response?.data?.error || 'Fehler beim Löschen des Eintrags',
-      color: 'red',
-    });
-  } finally {
-    setLoading(false);
-  }
-};
+    setLoading(true);
+    try {
+      // Verbesserte Fehlerbehandlung und Logging
+      console.log("Versuche Arbeitszeit mit ID zu löschen:", id);
+      
+      // Versuche einen anderen API-Pfad, der konsistent mit deinen anderen API-Endpunkten ist
+      const response = await axios.delete(`http://localhost:8080/api/arbeitszeiten/${id}`, {
+        headers: { Authorization: token }
+      });
+      
+      console.log("Antwort vom Server:", response.data);
+      
+      notifications.show({
+        title: 'Erfolg',
+        message: 'Arbeitszeit-Eintrag wurde erfolgreich gelöscht.',
+        color: 'green',
+      });
+      
+      setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" });
+      await refreshArbeitszeiten();
+    } catch (error) {
+      // Verbesserte Fehlerprotokollierung
+      console.error("Fehler beim Löschen:", error);
+      console.error("Fehlerdetails:", error.response?.data);
+      console.error("Status-Code:", error.response?.status);
+      
+      notifications.show({
+        title: 'Fehler',
+        message: error.response?.data?.error || 'Fehler beim Löschen des Eintrags',
+        color: 'red',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleEdit = (arbeitszeit) => {
     // Modal mit den Daten des ausgewählten Eintrags öffnen
@@ -292,180 +302,51 @@ const handleDeleteArbeitszeit = async (id) => {
     });
   };
   
-const handleSaveEdit = async () => {
-  if (!editModal.arbeitszeit) return;
-  
-  // Validierung
-  if (!editModal.anfangszeit) {
-    notifications.show({
-      title: 'Fehler',
-      message: 'Bitte geben Sie eine Anfangszeit ein.',
-      color: 'red',
-    });
-    return;
-  }
-  
-  setLoading(true);
-  try {
-    // Datum aus dem arbeitszeit-Objekt extrahieren
-    const datum = dayjs(editModal.arbeitszeit.datum);
+  const handleSaveEdit = async () => {
+    if (!editModal.arbeitszeit) return;
     
-    // Anfangszeit mit dem korrekten Datum kombinieren und in ISO-Format mit Z konvertieren
-    // Go erwartet RFC3339-Format: "2006-01-02T15:04:05Z07:00"
-    const anfangszeit = datum
-      .hour(parseInt(editModal.anfangszeit.split(':')[0]))
-      .minute(parseInt(editModal.anfangszeit.split(':')[1]))
-      .second(0)
-      .toISOString(); // Format: 2025-05-14T08:00:00.000Z
+    // Validierung
+    if (!editModal.anfangszeit) {
+      notifications.show({
+        title: 'Fehler',
+        message: 'Bitte geben Sie eine Anfangszeit ein.',
+        color: 'red',
+      });
+      return;
+    }
     
-    // Payload vorbereiten
-    const payload = {
-      id: editModal.arbeitszeit.id,
-      anfangszeit: anfangszeit,
-      bearbeiter_id: decoded?.nutzer_id,
-    };
-    
-    // Endzeit nur hinzufügen, wenn sie tatsächlich einen Wert hat
-    if (editModal.endzeit && editModal.endzeit.trim() !== '') {
-      const endzeit = datum
-        .hour(parseInt(editModal.endzeit.split(':')[0]))
-        .minute(parseInt(editModal.endzeit.split(':')[1]))
+    setLoading(true);
+    try {
+      // Datum aus dem arbeitszeit-Objekt extrahieren
+      const datum = dayjs(editModal.arbeitszeit.datum);
+      
+      // Anfangszeit mit dem korrekten Datum kombinieren und in ISO-Format mit Z konvertieren
+      // Go erwartet RFC3339-Format: "2006-01-02T15:04:05Z07:00"
+      const anfangszeit = datum
+        .hour(parseInt(editModal.anfangszeit.split(':')[0]))
+        .minute(parseInt(editModal.anfangszeit.split(':')[1]))
         .second(0)
-        .toISOString(); // Format: 2025-05-14T16:30:00.000Z
+        .toISOString(); // Format: 2025-05-14T08:00:00.000Z
       
-      payload.endzeit = endzeit;
-    }
-    
-    console.log("Sende Daten an Backend:", JSON.stringify(payload, null, 2));
-    
-    const response = await axios({
-      method: 'put',
-      url: 'http://localhost:8080/api/arbeitszeit/update',
-      headers: { 
-        'Authorization': token,
-        'Content-Type': 'application/json'
-      },
-      data: payload,
-      validateStatus: function (status) {
-        return status < 500; // Akzeptiere auch Fehlerstatus für Debug-Zwecke
-      }
-    });
-    
-    console.log("Server-Antwort:", response.status, response.data);
-    
-    if (response.status !== 200) {
-      throw new Error(response.data.error || "Unbekannter Fehler");
-    }
-
-    notifications.show({
-      title: 'Erfolg',
-      message: 'Änderungen wurden gespeichert.',
-      color: 'green',
-    });
-    
-    setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" });
-    await refreshArbeitszeiten();
-  } catch (error) {
-    console.error("Fehler beim Bearbeiten:", error);
-    
-    if (error.response) {
-      console.error("Server Antwort:", error.response.status, error.response.data);
-    }
-    
-    notifications.show({
-      title: 'Fehler',
-      message: error.response?.data?.error || error.message || 'Fehler beim Bearbeiten der Arbeitszeit',
-      color: 'red',
-    });
-  } finally {
-    setLoading(false);
-  }
-};
-
-const berechneMontlicheStatistik = () => {
-  let gesamtStunden = 0;
-  let arbeitsTage = 0;
-
-    const abgeschlosseneZeiten = arbeitszeiten.filter(a => a.endzeit);
-
-     abgeschlosseneZeiten.forEach(zeit => {
-    // Berechne die Arbeitszeit in Stunden
-    const start = dayjs(zeit.anfangszeit);
-    const ende = dayjs(zeit.endzeit);
-    
-    // Berechne die Differenz in Stunden und ziehe die Pause ab
-    const pauseInStunden = zeit.pause / 60;
-    const stundenDifferenz = ende.diff(start, 'hour', true) - pauseInStunden;
-    
-    if (stundenDifferenz > 0) {
-      gesamtStunden += stundenDifferenz;
-      arbeitsTage++;
-    }
-  });
-
-  const durchschnittProTag = arbeitsTage > 0 ? gesamtStunden / arbeitsTage : 0;
-
-  setMonatlicheStatistik({
-    gesamtStunden: gesamtStunden.toFixed(2),
-    arbeitsTage,
-    durchschnittProTag: durchschnittProTag.toFixed(2)
-  });
-};
-
-// Füge diesen useEffect nach dem useEffect hinzu, der die Arbeitszeiten lädt
-useEffect(() => {
-  if (arbeitszeiten.length > 0) {
-    berechneMontlicheStatistik();
-  }
-}, [arbeitszeiten]);
-
-
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    navigate("/login");
-  };
-
-  // Überarbeitete Funktion für das Speichern der Arbeitszeit
-const handleSaveArbeitszeit = async () => {
-  // Prüfen, ob ein Mitarbeiter ausgewählt ist
-  if (!selectedMitarbeiter) {
-    notifications.show({
-      title: 'Fehler',
-      message: 'Kein Mitarbeiter ausgewählt. Bitte wählen Sie einen Mitarbeiter aus.',
-      color: 'red',
-    });
-    return;
-  }
-  
-  // Wenn keine Startzeit eingegeben wurde, aktuelle Zeit verwenden
-  if (!startzeit) {
-    setStartzeit(dayjs().format("HH:mm"));
-  }
-  
-  setLoading(true);
-  try {
-    // Wenn bereits ein Eintrag für heute existiert und keine Endzeit hat
-    if (heutigerEintrag && !heutigerEintrag.endzeit) {
-      // Aktualisiere den bestehenden Eintrag mit der Endzeit
-      const endzeitToSave = endzeit || dayjs().format("HH:mm");
-      
-      // Anfangszeit aus dem bestehenden Eintrag erhalten
-      const anfangszeitDate = dayjs(heutigerEintrag.anfangszeit);
-      
-      // Endzeit als ISO-String erstellen 
-      const endeDate = dayjs()
-        .hour(parseInt(endzeitToSave.split(':')[0]))
-        .minute(parseInt(endzeitToSave.split(':')[1]))
-        .second(0);
-      
+      // Payload vorbereiten
       const payload = {
-        id: heutigerEintrag.id,
-        anfangszeit: anfangszeitDate.toISOString(), // ISO-Format: 2025-05-14T08:00:00.000Z
-        endzeit: endeDate.toISOString(), // ISO-Format: 2025-05-14T16:30:00.000Z
+        id: editModal.arbeitszeit.id,
+        anfangszeit: anfangszeit,
         bearbeiter_id: decoded?.nutzer_id,
       };
       
-      console.log("Aktualisiere Eintrag:", JSON.stringify(payload, null, 2));
+      // Endzeit nur hinzufügen, wenn sie tatsächlich einen Wert hat
+      if (editModal.endzeit && editModal.endzeit.trim() !== '') {
+        const endzeit = datum
+          .hour(parseInt(editModal.endzeit.split(':')[0]))
+          .minute(parseInt(editModal.endzeit.split(':')[1]))
+          .second(0)
+          .toISOString(); // Format: 2025-05-14T16:30:00.000Z
+        
+        payload.endzeit = endzeit;
+      }
+      
+      console.log("Sende Daten an Backend:", JSON.stringify(payload, null, 2));
       
       const response = await axios({
         method: 'put',
@@ -474,38 +355,88 @@ const handleSaveArbeitszeit = async () => {
           'Authorization': token,
           'Content-Type': 'application/json'
         },
-        data: payload
+        data: payload,
+        validateStatus: function (status) {
+          return status < 500; // Akzeptiere auch Fehlerstatus für Debug-Zwecke
+        }
       });
       
+      console.log("Server-Antwort:", response.status, response.data);
+      
+      if (response.status !== 200) {
+        throw new Error(response.data.error || "Unbekannter Fehler");
+      }
+
       notifications.show({
         title: 'Erfolg',
-        message: 'Endzeit wurde erfolgreich gespeichert.',
+        message: 'Änderungen wurden gespeichert.',
         color: 'green',
       });
-    } else {
-      // Erstelle einen neuen Eintrag
-      const startzeitToSave = startzeit || dayjs().format("HH:mm");
-      const heute = dayjs();
       
-      // Anfangszeit als ISO-String erstellen
-      const anfangDate = heute
-        .hour(parseInt(startzeitToSave.split(':')[0]))
-        .minute(parseInt(startzeitToSave.split(':')[1]))
+      setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" });
+      await refreshArbeitszeiten();
+    } catch (error) {
+      console.error("Fehler beim Bearbeiten:", error);
+      
+      if (error.response) {
+        console.error("Server Antwort:", error.response.status, error.response.data);
+      }
+      
+      notifications.show({
+        title: 'Fehler',
+        message: error.response?.data?.error || error.message || 'Fehler beim Bearbeiten der Arbeitszeit',
+        color: 'red',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Neue Funktion zum Erstellen eines neuen Arbeitszeit-Eintrags mit benutzerdefiniertem Datum
+  const handleCreateNewEntry = async () => {
+    if (!selectedMitarbeiter) {
+      notifications.show({
+        title: 'Fehler',
+        message: 'Kein Mitarbeiter ausgewählt. Bitte wählen Sie einen Mitarbeiter aus.',
+        color: 'red',
+      });
+      return;
+    }
+    
+    if (!newEntryModal.datum || !newEntryModal.anfangszeit) {
+      notifications.show({
+        title: 'Fehler',
+        message: 'Bitte geben Sie Datum und Anfangszeit ein.',
+        color: 'red',
+      });
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const selectedDate = dayjs(newEntryModal.datum);
+      
+      // Erstelle einen neuen Eintrag
+      const anfangszeitArray = newEntryModal.anfangszeit.split(':');
+      const anfangDate = selectedDate
+        .hour(parseInt(anfangszeitArray[0]))
+        .minute(parseInt(anfangszeitArray[1]))
         .second(0);
       
       const payload = {
         nutzer_id: selectedMitarbeiter.ID,
-        datum: heute.format("YYYY-MM-DD"),
-        anfangszeit: anfangDate.toISOString(), // ISO-Format: 2025-05-14T08:00:00.000Z
+        datum: selectedDate.format("YYYY-MM-DD"),
+        anfangszeit: anfangDate.toISOString(),
       };
 
-      if (endzeit) {
-        const endeDate = heute
-          .hour(parseInt(endzeit.split(':')[0]))
-          .minute(parseInt(endzeit.split(':')[1]))
+      if (newEntryModal.endzeit) {
+        const endzeitArray = newEntryModal.endzeit.split(':');
+        const endeDate = selectedDate
+          .hour(parseInt(endzeitArray[0]))
+          .minute(parseInt(endzeitArray[1]))
           .second(0);
         
-        payload.endzeit = endeDate.toISOString(); // ISO-Format: 2025-05-14T16:30:00.000Z
+        payload.endzeit = endeDate.toISOString();
       }
       
       console.log("Erstelle neuen Eintrag:", JSON.stringify(payload, null, 2));
@@ -522,93 +453,264 @@ const handleSaveArbeitszeit = async () => {
         message: 'Arbeitszeit wurde erfolgreich gespeichert.',
         color: 'green',
       });
-    }
-    
-    await refreshArbeitszeiten();
-    setStartzeit("");
-    setEndzeit("");
-  } catch (err) {
-    console.error("Fehler beim Speichern der Zeiten:", err);
-    
-    if (err.response) {
-      console.error("Server Antwort:", err.response.status, err.response.data);
-    }
-    
-    notifications.show({
-      title: 'Fehler',
-      message: err.response?.data?.error || 'Fehler beim Speichern der Arbeitszeit',
-      color: 'red',
-    });
-  } finally {
-    setLoading(false);
-  }
-};
-
-  // Funktion zum Aktualisieren der Arbeitszeiten mit Duplifikaterkennung
-const refreshArbeitszeiten = async () => {
-  if (!selectedMitarbeiter || !selectedMonat) return;
-  
-  setLoading(true);
-  const monthString = selectedMonat.format("YYYY-MM");
-  try {
-    const response = await axios.get(
-      `http://localhost:8080/api/arbeitszeiten/${selectedMitarbeiter.ID}?monat=${monthString}`,
-      { headers: { Authorization: token } }
-    );
-    
-    // Entferne doppelte Einträge (basierend auf dem Datum)
-    const uniqueEntries = {};
-    response.data.forEach(item => {
-      const datumKey = dayjs(item.datum).format("YYYY-MM-DD");
       
-      // Wenn bereits ein Eintrag für dieses Datum existiert:
-      if (uniqueEntries[datumKey]) {
-        // Wenn der aktuelle Eintrag eine Endzeit hat, aber der bereits vorhandene nicht, 
-        // dann verwende den aktuellen
-        if (item.endzeit && !uniqueEntries[datumKey].endzeit) {
-          uniqueEntries[datumKey] = item;
-        } 
-        // Wenn beide eine Endzeit haben oder beide keine haben, 
-        // nehme den mit der höheren ID (neueren Eintrag)
-        else if ((item.endzeit && uniqueEntries[datumKey].endzeit) || 
-                (!item.endzeit && !uniqueEntries[datumKey].endzeit)) {
-          if (item.id > uniqueEntries[datumKey].id) {
-            uniqueEntries[datumKey] = item;
-          }
-        }
-      } else {
-        // Wenn noch kein Eintrag für dieses Datum existiert, füge den aktuellen hinzu
-        uniqueEntries[datumKey] = item;
+      // Schließe den Modal und setze Felder zurück
+      setNewEntryModal({
+        open: false,
+        datum: new Date(),
+        anfangszeit: "",
+        endzeit: ""
+      });
+      
+      // Aktualisiere die Monatsansicht, wenn das erstellte Datum im aktuell angezeigten Monat liegt
+      if (selectedDate.month() === selectedMonat.month() && 
+          selectedDate.year() === selectedMonat.year()) {
+        await refreshArbeitszeiten();
+      }
+    } catch (err) {
+      console.error("Fehler beim Speichern der Zeiten:", err);
+      
+      if (err.response) {
+        console.error("Server Antwort:", err.response.status, err.response.data);
+      }
+      
+      notifications.show({
+        title: 'Fehler',
+        message: err.response?.data?.error || 'Fehler beim Speichern der Arbeitszeit',
+        color: 'red',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const berechneMontlicheStatistik = () => {
+    let gesamtStunden = 0;
+    let arbeitsTage = 0;
+
+    const abgeschlosseneZeiten = arbeitszeiten.filter(a => a.endzeit);
+
+    abgeschlosseneZeiten.forEach(zeit => {
+      // Berechne die Arbeitszeit in Stunden
+      const start = dayjs(zeit.anfangszeit);
+      const ende = dayjs(zeit.endzeit);
+      
+      // Berechne die Differenz in Stunden und ziehe die Pause ab
+      const pauseInStunden = zeit.pause / 60;
+      const stundenDifferenz = ende.diff(start, 'hour', true) - pauseInStunden;
+      
+      if (stundenDifferenz > 0) {
+        gesamtStunden += stundenDifferenz;
+        arbeitsTage++;
       }
     });
+
+    const durchschnittProTag = arbeitsTage > 0 ? gesamtStunden / arbeitsTage : 0;
+
+    setMonatlicheStatistik({
+      gesamtStunden: gesamtStunden.toFixed(2),
+      arbeitsTage,
+      durchschnittProTag: durchschnittProTag.toFixed(2)
+    });
+  };
+
+  // Füge diesen useEffect nach dem useEffect hinzu, der die Arbeitszeiten lädt
+  useEffect(() => {
+    if (arbeitszeiten.length > 0) {
+      berechneMontlicheStatistik();
+    }
+  }, [arbeitszeiten]);
+
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    navigate("/login");
+  };
+
+  // Überarbeitete Funktion für das Speichern der Arbeitszeit
+  const handleSaveArbeitszeit = async () => {
+    // Prüfen, ob ein Mitarbeiter ausgewählt ist
+    if (!selectedMitarbeiter) {
+      notifications.show({
+        title: 'Fehler',
+        message: 'Kein Mitarbeiter ausgewählt. Bitte wählen Sie einen Mitarbeiter aus.',
+        color: 'red',
+      });
+      return;
+    }
     
-    // Konvertiere zurück zu einem Array
-    const uniqueArbeitszeiten = Object.values(uniqueEntries);
-    setArbeitszeiten(uniqueArbeitszeiten);
+    // Wenn keine Startzeit eingegeben wurde, aktuelle Zeit verwenden
+    if (!startzeit) {
+      setStartzeit(dayjs().format("HH:mm"));
+    }
     
-    // Aktualisiere den heutigen Eintrag
-    const heuteDatumKey = dayjs().format("YYYY-MM-DD");
-    const heutiger = uniqueEntries[heuteDatumKey] || null;
-    setHeutigerEintrag(heutiger);
-    
-    // Aktualisiere die Startzeit-Anzeige
-    if (heutiger && !heutiger.endzeit) {
-      setStartzeit(dayjs(heutiger.anfangszeit).format("HH:mm"));
-    } else {
+    setLoading(true);
+    try {
+      // Wenn bereits ein Eintrag für heute existiert und keine Endzeit hat
+      if (heutigerEintrag && !heutigerEintrag.endzeit) {
+        // Aktualisiere den bestehenden Eintrag mit der Endzeit
+        const endzeitToSave = endzeit || dayjs().format("HH:mm");
+        
+        // Anfangszeit aus dem bestehenden Eintrag erhalten
+        const anfangszeitDate = dayjs(heutigerEintrag.anfangszeit);
+        
+        // Endzeit als ISO-String erstellen 
+        const endeDate = dayjs()
+          .hour(parseInt(endzeitToSave.split(':')[0]))
+          .minute(parseInt(endzeitToSave.split(':')[1]))
+          .second(0);
+        
+        const payload = {
+          id: heutigerEintrag.id,
+          anfangszeit: anfangszeitDate.toISOString(), // ISO-Format: 2025-05-14T08:00:00.000Z
+          endzeit: endeDate.toISOString(), // ISO-Format: 2025-05-14T16:30:00.000Z
+          bearbeiter_id: decoded?.nutzer_id,
+        };
+        
+        console.log("Aktualisiere Eintrag:", JSON.stringify(payload, null, 2));
+        
+        const response = await axios({
+          method: 'put',
+          url: 'http://localhost:8080/api/arbeitszeit/update',
+          headers: { 
+            'Authorization': token,
+            'Content-Type': 'application/json'
+          },
+          data: payload
+        });
+        
+        notifications.show({
+          title: 'Erfolg',
+          message: 'Endzeit wurde erfolgreich gespeichert.',
+          color: 'green',
+        });
+      } else {
+        // Erstelle einen neuen Eintrag
+        const startzeitToSave = startzeit || dayjs().format("HH:mm");
+        const heute = dayjs();
+        
+        // Anfangszeit als ISO-String erstellen
+        const anfangDate = heute
+          .hour(parseInt(startzeitToSave.split(':')[0]))
+          .minute(parseInt(startzeitToSave.split(':')[1]))
+          .second(0);
+        
+        const payload = {
+          nutzer_id: selectedMitarbeiter.ID,
+          datum: heute.format("YYYY-MM-DD"),
+          anfangszeit: anfangDate.toISOString(), // ISO-Format: 2025-05-14T08:00:00.000Z
+        };
+
+        if (endzeit) {
+          const endeDate = heute
+            .hour(parseInt(endzeit.split(':')[0]))
+            .minute(parseInt(endzeit.split(':')[1]))
+            .second(0);
+          
+          payload.endzeit = endeDate.toISOString(); // ISO-Format: 2025-05-14T16:30:00.000Z
+        }
+        
+        console.log("Erstelle neuen Eintrag:", JSON.stringify(payload, null, 2));
+        
+        await axios.post("http://localhost:8080/api/arbeitszeiten", payload, {
+          headers: { 
+            Authorization: token,
+            'Content-Type': 'application/json'
+          },
+        });
+        
+        notifications.show({
+          title: 'Erfolg',
+          message: 'Arbeitszeit wurde erfolgreich gespeichert.',
+          color: 'green',
+        });
+      }
+      
+      await refreshArbeitszeiten();
       setStartzeit("");
       setEndzeit("");
+    } catch (err) {
+      console.error("Fehler beim Speichern der Zeiten:", err);
+      
+      if (err.response) {
+        console.error("Server Antwort:", err.response.status, err.response.data);
+      }
+      
+      notifications.show({
+        title: 'Fehler',
+        message: err.response?.data?.error || 'Fehler beim Speichern der Arbeitszeit',
+        color: 'red',
+      });
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.error("Fehler beim Aktualisieren der Arbeitszeiten:", error);
-    notifications.show({
-      title: 'Fehler',
-      message: 'Arbeitszeiten konnten nicht aktualisiert werden.',
-      color: 'red',
-    });
-  } finally {
-    setLoading(false);
-  }
-};
+  };
+
+  // Funktion zum Aktualisieren der Arbeitszeiten mit Duplifikaterkennung
+  const refreshArbeitszeiten = async () => {
+    if (!selectedMitarbeiter || !selectedMonat) return;
+    
+    setLoading(true);
+    const monthString = selectedMonat.format("YYYY-MM");
+    try {
+      const response = await axios.get(
+        `http://localhost:8080/api/arbeitszeiten/${selectedMitarbeiter.ID}?monat=${monthString}`,
+        { headers: { Authorization: token } }
+      );
+      
+      // Entferne doppelte Einträge (basierend auf dem Datum)
+      const uniqueEntries = {};
+      response.data.forEach(item => {
+        const datumKey = dayjs(item.datum).format("YYYY-MM-DD");
+        
+        // Wenn bereits ein Eintrag für dieses Datum existiert:
+        if (uniqueEntries[datumKey]) {
+          // Wenn der aktuelle Eintrag eine Endzeit hat, aber der bereits vorhandene nicht, 
+          // dann verwende den aktuellen
+          if (item.endzeit && !uniqueEntries[datumKey].endzeit) {
+            uniqueEntries[datumKey] = item;
+          } 
+          // Wenn beide eine Endzeit haben oder beide keine haben, 
+          // nehme den mit der höheren ID (neueren Eintrag)
+          else if ((item.endzeit && uniqueEntries[datumKey].endzeit) || 
+                  (!item.endzeit && !uniqueEntries[datumKey].endzeit)) {
+            if (item.id > uniqueEntries[datumKey].id) {
+              uniqueEntries[datumKey] = item;
+            }
+          }
+        } else {
+          // Wenn noch kein Eintrag für dieses Datum existiert, füge den aktuellen hinzu
+          uniqueEntries[datumKey] = item;
+        }
+      });
+      
+      // Konvertiere zurück zu einem Array
+      const uniqueArbeitszeiten = Object.values(uniqueEntries);
+      setArbeitszeiten(uniqueArbeitszeiten);
+      
+      // Aktualisiere den heutigen Eintrag
+      const heuteDatumKey = dayjs().format("YYYY-MM-DD");
+      const heutiger = uniqueEntries[heuteDatumKey] || null;
+      setHeutigerEintrag(heutiger);
+      
+      // Aktualisiere die Startzeit-Anzeige
+      if (heutiger && !heutiger.endzeit) {
+        setStartzeit(dayjs(heutiger.anfangszeit).format("HH:mm"));
+      } else {
+        setStartzeit("");
+        setEndzeit("");
+      }
+    } catch (error) {
+      console.error("Fehler beim Aktualisieren der Arbeitszeiten:", error);
+      notifications.show({
+        title: 'Fehler',
+        message: 'Arbeitszeiten konnten nicht aktualisiert werden.',
+        color: 'red',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Nutzer kann nur sich selbst sehen, es sei denn, er ist Vorgesetzter oder Admin
   const filteredMitarbeiter = useMemo(() => {
@@ -818,7 +920,7 @@ const refreshArbeitszeiten = async () => {
             <td style={centerTextStyle}>auto</td>
             <td style={centerTextStyle}>-</td>
             <td style={centerTextStyle}>
-              <Button size="xs" onClick={handleSaveArbeitszeit}>
+              <Button size="xs" onClick={handleSaveArbeitszeit} color="green">
                 {heutigerEintrag && !heutigerEintrag.endzeit ? "Ende speichern" : "Start speichern"}
               </Button>
             </td>
@@ -888,6 +990,18 @@ const refreshArbeitszeiten = async () => {
         )}
       </tbody>
     </Table>
+     <Group position="right" mt="sm">
+          <Button 
+            onClick={() => setNewEntryModal({ ...newEntryModal, open: true })}
+            leftSection={<IconPlus size={16} />}
+            color="violet"
+            size="md"
+          >
+            Neuen Zeiteintrag anlegen
+          </Button>
+        </Group>
+      
+    
   </>
 )}
       
@@ -934,6 +1048,7 @@ const refreshArbeitszeiten = async () => {
           mt="xs" 
           size="xs" 
           onClick={handleSaveArbeitszeit}
+          color="green"
         >
           {heutigerEintrag && !heutigerEintrag.endzeit ? "Ende speichern" : "Start speichern"}
         </Button>
@@ -1040,75 +1155,139 @@ const refreshArbeitszeiten = async () => {
         </Grid>
         
         {/* Modal für Bearbeitung der Arbeitszeiten */}
-        {/* Modal für Bearbeitung der Arbeitszeiten */}
-<Modal
-  opened={editModal.open}
-  onClose={() => setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" })}
-  title="Arbeitszeit bearbeiten"
-  size={isMobile ? "xs" : "xl"}
->
-  <LoadingOverlay visible={loading} overlayBlur={2} />
-  
-  {editModal.arbeitszeit && (
-    <>
-      <Text mb="md" ta="center">
-        Datum: {dayjs(editModal.arbeitszeit.datum).format("DD.MM.YYYY")}
-      </Text>
-      
-      <TimeInput
-        label="Anfangszeit"
-        leftSection={<IconClock size={16} />}
-        value={editModal.anfangszeit}
-        onChange={(e) => setEditModal({ ...editModal, anfangszeit: e.target.value })}
-        mb="md"
-        placeholder="08:00"
-        required
-      />
-      
-      <TimeInput
-        label="Endzeit"
-        leftSection={<IconClock size={16} />}
-        value={editModal.endzeit}
-        onChange={(e) => setEditModal({ ...editModal, endzeit: e.target.value })}
-        mb="md"
-        placeholder="16:30"
-      />
-      
-      <Text size="sm" c="dimmed" mb="md" ta="center">
-        Hinweis: Die Pause wird automatisch basierend auf der Arbeitszeit berechnet.
-      </Text>
-      
-      <Group position="center" mb="md">
-         <Button onClick={handleSaveEdit}>Speichern</Button>
-        <Button 
-          variant="outline" 
-          onClick={() => setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" })}
+        <Modal
+          opened={editModal.open}
+          onClose={() => setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" })}
+          title="Arbeitszeit bearbeiten"
+          size={isMobile ? "xs" : "xl"}
         >
-          Abbrechen
-        </Button>
-       
-      </Group>
-      
-      {/* Trennlinie */}
-      <Box mb="md" style={{ borderTop: '1px solid #e9ecef', margin: '15px 0' }}></Box>
-      
-      {/* Löschen-Button */}
-      <Group position="center">
-        <Button 
-          color="red" 
-          variant="outline"
-          onClick={() => {
-            if (window.confirm('Sind Sie sicher, dass Sie diesen Arbeitszeit-Eintrag löschen möchten?')) {
-              handleDeleteArbeitszeit(editModal.arbeitszeit.id);
-            }
-          }}
+          <LoadingOverlay visible={loading} overlayBlur={2} />
+          
+          {editModal.arbeitszeit && (
+            <>
+              <Text mb="md" ta="center">
+                Datum: {dayjs(editModal.arbeitszeit.datum).format("DD.MM.YYYY")}
+              </Text>
+              
+              <TimeInput
+                label="Anfangszeit"
+                leftSection={<IconClock size={16} />}
+                value={editModal.anfangszeit}
+                onChange={(e) => setEditModal({ ...editModal, anfangszeit: e.target.value })}
+                mb="md"
+                placeholder="08:00"
+                required
+              />
+              
+              <TimeInput
+                label="Endzeit"
+                leftSection={<IconClock size={16} />}
+                value={editModal.endzeit}
+                onChange={(e) => setEditModal({ ...editModal, endzeit: e.target.value })}
+                mb="md"
+                placeholder="16:30"
+              />
+              
+              <Text size="sm" c="dimmed" mb="md" ta="center">
+                Hinweis: Die Pause wird automatisch basierend auf der Arbeitszeit berechnet.
+              </Text>
+              
+              <Group position="center" mb="md">
+                <Button onClick={handleSaveEdit}>Speichern</Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" })}
+                >
+                  Abbrechen
+                </Button>
+              
+              </Group>
+              
+              {/* Trennlinie */}
+              <Box mb="md" style={{ borderTop: '1px solid #e9ecef', margin: '15px 0' }}></Box>
+              
+              {/* Löschen-Button */}
+              <Group position="center">
+                <Button 
+                  color="red" 
+                  variant="outline"
+                  onClick={() => {
+                    if (window.confirm('Sind Sie sicher, dass Sie diesen Arbeitszeit-Eintrag löschen möchten?')) {
+                      handleDeleteArbeitszeit(editModal.arbeitszeit.id);
+                    }
+                  }}
+                >
+                  Eintrag löschen
+                </Button>
+              </Group>
+            </>
+          )}
+        </Modal>
+
+        {/* Neuer Modal für die Erstellung eines neuen Eintrags mit Datumsauswahl */}
+        <Modal
+          opened={newEntryModal.open}
+          onClose={() => setNewEntryModal({ 
+            open: false, 
+            datum: new Date(), 
+            anfangszeit: "", 
+            endzeit: "" 
+          })}
+          title="Neuen Zeiteintrag erstellen"
+          size={isMobile ? "xs" : "md"}
         >
-          Eintrag löschen
-        </Button>
-      </Group>
-    </>
-  )}
-</Modal>
+          <LoadingOverlay visible={loading} overlayBlur={2} />
+          
+          <DatePickerInput
+            label="Datum auswählen"
+            placeholder="Datum auswählen"
+            value={newEntryModal.datum}
+            onChange={(date) => setNewEntryModal({ ...newEntryModal, datum: date })}
+            mb="md"
+            required
+            clearable={false}
+            locale="de"
+          />
+          
+          <TimeInput
+            label="Anfangszeit"
+            leftSection={<IconClock size={16} />}
+            value={newEntryModal.anfangszeit}
+            onChange={(e) => setNewEntryModal({ ...newEntryModal, anfangszeit: e.target.value })}
+            mb="md"
+            placeholder="08:00"
+            required
+          />
+          
+          <TimeInput
+            label="Endzeit (optional)"
+            leftSection={<IconClock size={16} />}
+            value={newEntryModal.endzeit}
+            onChange={(e) => setNewEntryModal({ ...newEntryModal, endzeit: e.target.value })}
+            mb="md"
+            placeholder="16:30"
+          />
+          
+          <Text size="sm" c="dimmed" mb="md" ta="center">
+            Hinweis: Die Pause wird automatisch basierend auf der Arbeitszeit berechnet.
+            Wenn keine Endzeit angegeben wird, kann der Eintrag später ergänzt werden.
+          </Text>
+          
+          <Group position="right" mt="md">
+            <Button onClick={handleCreateNewEntry}>Erstellen</Button>
+            <Button 
+              variant="outline" 
+              onClick={() => setNewEntryModal({
+                open: false,
+                datum: new Date(),
+                anfangszeit: "",
+                endzeit: ""
+              })}
+            >
+              Abbrechen
+            </Button>
+          </Group>
+        </Modal>
       </Container>
     </DatesProvider>
   );
