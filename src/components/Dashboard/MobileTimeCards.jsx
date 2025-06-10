@@ -1,10 +1,12 @@
+// src/components/Dashboard/MobileTimeCards.jsx - Aktualisierte Version
 import React from "react";
-import { Stack, Card, Text, SimpleGrid, Button, ActionIcon, Group } from "@mantine/core";
+import { Stack, Card, Text, SimpleGrid, Button, ActionIcon, Group, Tooltip, Alert } from "@mantine/core";
 import { TimeInput } from "@mantine/dates";
-import { IconClock, IconPencil, IconPlus } from '@tabler/icons-react';
+import { IconClock, IconPencil, IconPlus, IconLock, IconInfoCircle } from '@tabler/icons-react';
 import { useMantineTheme } from "@mantine/core";
 import dayjs from "dayjs";
 import { useTimeCalculations } from "../../hooks/useTimeCalculations";
+import { isEditAllowed, getEditNotAllowedMessage } from "../../utils/editTimeLimit";
 
 function MobileTimeCards({ 
   arbeitszeiten, 
@@ -22,6 +24,9 @@ function MobileTimeCards({
   const theme = useMantineTheme();
   const { calculateWorkingHoursAndPause, formatHoursAndMinutes } = useTimeCalculations();
   const istAktuellerMonat = selectedMonat.isSame(dayjs(), "month");
+  
+  // Prüfen, ob heute bearbeitet werden darf
+  const istHeuteBearbeitbar = isEditAllowed(dayjs());
 
   return (
     <Stack spacing="xs">
@@ -46,8 +51,22 @@ function MobileTimeCards({
         </SimpleGrid>
       </Card>
 
+      {/* Hinweis wenn aktueller Monat nicht bearbeitbar */}
+      {istAktuellerMonat && !istHeuteBearbeitbar && (
+        <Alert 
+          icon={<IconInfoCircle size={16} />} 
+          title="Bearbeitung nicht möglich" 
+          color="orange"
+          variant="light"
+        >
+          <Text size="sm">
+            Neue Einträge können nur bis zu 3 Monate rückwirkend erstellt werden.
+          </Text>
+        </Alert>
+      )}
+
       {/* Neue Zeiterfassung */}
-      {istAktuellerMonat && (!heutigerEintrag || !heutigerEintrag.endzeit) && (
+      {istAktuellerMonat && istHeuteBearbeitbar && (!heutigerEintrag || !heutigerEintrag.endzeit) && (
         <Card shadow="sm" withBorder p="xs">
           <Card.Section withBorder p="xs" bg={theme.colors.blue[0]}>
             <Group position="apart">
@@ -121,21 +140,38 @@ function MobileTimeCards({
               arbeitszeitText = formatHoursAndMinutes(workingHours);
               korrektePause = pauseMinutes;
             }
+
+            // Prüfen, ob dieser Eintrag bearbeitet werden darf
+            const istBearbeitbar = isEditAllowed(a.datum);
             
             return (
               <Card key={a.id} shadow="sm" withBorder p="xs">
                 <Card.Section withBorder p="xs" bg="gray.0">
                   <Group position="apart">
-                    <Text fw={500} ta="center" style={{width: '100%'}}>
-                      {dayjs(a.datum).format("DD.MM.YYYY")}
-                    </Text>
-                    <ActionIcon 
-                      size="sm" 
-                      onClick={() => onEdit({ open: true, arbeitszeit: a })} 
-                      style={{position: 'absolute', right: '12px'}}
-                    >
-                      <IconPencil size={16} />
-                    </ActionIcon>
+                    <Group>
+                      <Text fw={500}>
+                        {dayjs(a.datum).format("DD.MM.YYYY")}
+                      </Text>
+                      {!istBearbeitbar && (
+                        <Tooltip label={getEditNotAllowedMessage()}>
+                          <IconLock size={14} color={theme.colors.gray[6]} />
+                        </Tooltip>
+                      )}
+                    </Group>
+                    {istBearbeitbar ? (
+                      <ActionIcon 
+                        size="sm" 
+                        onClick={() => onEdit({ open: true, arbeitszeit: a })}
+                      >
+                        <IconPencil size={16} />
+                      </ActionIcon>
+                    ) : (
+                      <Tooltip label={getEditNotAllowedMessage()}>
+                        <ActionIcon size="sm" disabled>
+                          <IconLock size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    )}
                   </Group>
                 </Card.Section>
                 <SimpleGrid cols={2} spacing="xs" mt="xs">

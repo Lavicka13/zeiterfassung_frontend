@@ -1,9 +1,11 @@
+// src/components/Dashboard/TimeTable.jsx - Aktualisierte Version
 import React from "react";
-import { Table, Button, Text, Group } from "@mantine/core";
+import { Table, Button, Text, Group, Tooltip } from "@mantine/core";
 import { TimeInput } from "@mantine/dates";
-import { IconPlus, IconClock } from '@tabler/icons-react';
+import { IconPlus, IconClock, IconLock } from '@tabler/icons-react';
 import dayjs from "dayjs";
 import { useTimeCalculations } from "../../hooks/useTimeCalculations";
+import { isEditAllowed, getEditNotAllowedMessage } from "../../utils/editTimeLimit";
 
 function TimeTable({ 
   arbeitszeiten, 
@@ -21,6 +23,9 @@ function TimeTable({
   const istAktuellerMonat = selectedMonat.isSame(dayjs(), "month");
   const centerTextStyle = { textAlign: 'center' };
 
+  // Prüfen, ob heute bearbeitet werden darf
+  const istHeuteBearbeitbar = isEditAllowed(dayjs());
+
   return (
     <>
       <Table highlightOnHover withBorder withColumnBorders>
@@ -35,8 +40,8 @@ function TimeTable({
           </tr>
         </thead>
         <tbody>
-          {/* Aktuelle Eingabezeile */}
-          {istAktuellerMonat && (!heutigerEintrag || !heutigerEintrag.endzeit) && (
+          {/* Aktuelle Eingabezeile - nur wenn heute bearbeitbar ist */}
+          {istAktuellerMonat && istHeuteBearbeitbar && (!heutigerEintrag || !heutigerEintrag.endzeit) && (
             <tr>
               <td style={centerTextStyle}>{dayjs().format("DD.MM.YYYY")}</td>
               <td style={centerTextStyle}>
@@ -68,6 +73,18 @@ function TimeTable({
             </tr>
           )}
 
+          {/* Hinweiszeile wenn heute nicht bearbeitbar */}
+          {istAktuellerMonat && !istHeuteBearbeitbar && (
+            <tr>
+              <td colSpan={6} style={{ textAlign: "center", padding: "20px", color: "#868e96" }}>
+                <Group position="center" spacing="xs">
+                  <IconLock size={16} />
+                  <Text size="sm">Neue Einträge können nur bis zu 3 Monate rückwirkend erstellt werden.</Text>
+                </Group>
+              </td>
+            </tr>
+          )}
+
           {/* Liste der Arbeitszeiten */}
           {arbeitszeiten.length > 0 ? (
             arbeitszeiten
@@ -94,6 +111,9 @@ function TimeTable({
                   arbeitszeitText = formatHoursAndMinutes(workingHours);
                   korrektePause = pauseMinutes;
                 }
+
+                // Prüfen, ob dieser Eintrag bearbeitet werden darf
+                const istBearbeitbar = isEditAllowed(a.datum);
                 
                 return (
                   <tr
@@ -102,7 +122,14 @@ function TimeTable({
                       backgroundColor: index % 2 === 1 ? "#f9f9f9" : "transparent",
                     }}
                   >
-                    <td style={centerTextStyle}>{dayjs(a.datum).format("DD.MM.YYYY")}</td>
+                    <td style={centerTextStyle}>
+                      {dayjs(a.datum).format("DD.MM.YYYY")}
+                      {!istBearbeitbar && (
+                        <Tooltip label={getEditNotAllowedMessage()}>
+                          <IconLock size={14} style={{ marginLeft: 4, color: "#868e96" }} />
+                        </Tooltip>
+                      )}
+                    </td>
                     <td style={centerTextStyle}>
                       {a.anfangszeit ? dayjs(a.anfangszeit).format("HH:mm") : "-"}
                     </td>
@@ -112,9 +139,17 @@ function TimeTable({
                     <td style={centerTextStyle}>{korrektePause} min</td>
                     <td style={centerTextStyle}>{arbeitszeitText}</td>
                     <td style={centerTextStyle}>
-                      <Button size="xs" onClick={() => onEdit({ open: true, arbeitszeit: a })}>
-                        Bearbeiten
-                      </Button>
+                      {istBearbeitbar ? (
+                        <Button size="xs" onClick={() => onEdit({ open: true, arbeitszeit: a })}>
+                          Bearbeiten
+                        </Button>
+                      ) : (
+                        <Tooltip label={getEditNotAllowedMessage()}>
+                          <Button size="xs" disabled leftSection={<IconLock size={14} />}>
+                            Gesperrt
+                          </Button>
+                        </Tooltip>
+                      )}
                     </td>
                   </tr>
                 );

@@ -1,9 +1,11 @@
+// src/components/Dashboard/TimeEditModal.jsx - Aktualisierte Version
 import React, { useState, useEffect } from "react";
-import { Modal, Text, Button, Group, Box, LoadingOverlay } from "@mantine/core";
+import { Modal, Text, Button, Group, Box, LoadingOverlay, Alert } from "@mantine/core";
 import { TimeInput } from "@mantine/dates";
-import { IconClock } from '@tabler/icons-react';
+import { IconClock, IconLock } from '@tabler/icons-react';
 import { useMediaQuery } from "@mantine/hooks";
 import dayjs from "dayjs";
+import { isEditAllowed, getEditNotAllowedMessage } from "../../utils/editTimeLimit";
 
 function TimeEditModal({ modal, onClose, onSave, onDelete, loading }) {
   const isMobile = useMediaQuery('(max-width: 48em)');
@@ -22,15 +24,28 @@ function TimeEditModal({ modal, onClose, onSave, onDelete, loading }) {
     }
   }, [modal.open, modal.arbeitszeit]);
 
+  // Prüfen, ob der Eintrag bearbeitet werden darf
+  const istBearbeitbar = modal.arbeitszeit ? isEditAllowed(modal.arbeitszeit.datum) : false;
+
   const handleSave = () => {
+    if (!istBearbeitbar) {
+      return; // Sollte nicht aufgerufen werden können, aber Sicherheitscheck
+    }
     onSave(modal.arbeitszeit, anfangszeit, endzeit);
   };
 
   const handleDelete = () => {
+    if (!istBearbeitbar) {
+      return; // Sollte nicht aufgerufen werden können, aber Sicherheitscheck
+    }
     if (window.confirm('Sind Sie sicher, dass Sie diesen Arbeitszeit-Eintrag löschen möchten?')) {
       onDelete(modal.arbeitszeit?.id);
     }
   };
+
+  if (!modal.arbeitszeit) {
+    return null;
+  }
 
   return (
     <Modal
@@ -41,41 +56,67 @@ function TimeEditModal({ modal, onClose, onSave, onDelete, loading }) {
     >
       <LoadingOverlay visible={loading} overlayBlur={2} />
       
-      {modal.arbeitszeit && (
+      <Text mb="md" ta="center">
+        Datum: {dayjs(modal.arbeitszeit.datum).format("DD.MM.YYYY")}
+      </Text>
+
+      {/* Warnung wenn nicht bearbeitbar */}
+      {!istBearbeitbar && (
+        <Alert 
+          icon={<IconLock size={16} />} 
+          title="Bearbeitung nicht möglich" 
+          color="red"
+          variant="light"
+          mb="md"
+        >
+          <Text size="sm">
+            {getEditNotAllowedMessage()}
+          </Text>
+        </Alert>
+      )}
+      
+      <TimeInput
+        label="Anfangszeit"
+        leftSection={<IconClock size={16} />}
+        value={anfangszeit}
+        onChange={(e) => setAnfangszeit(e.target.value)}
+        mb="md"
+        placeholder="08:00"
+        required
+        disabled={!istBearbeitbar}
+      />
+      
+      <TimeInput
+        label="Endzeit"
+        leftSection={<IconClock size={16} />}
+        value={endzeit}
+        onChange={(e) => setEndzeit(e.target.value)}
+        mb="md"
+        placeholder="16:30"
+        disabled={!istBearbeitbar}
+      />
+      
+      {istBearbeitbar && (
+        <Text size="sm" c="dimmed" mb="md" ta="center">
+          Hinweis: Die Pause wird automatisch basierend auf der Arbeitszeit berechnet.
+          Nachtschichten (über Mitternacht) werden korrekt erkannt und berechnet.
+        </Text>
+      )}
+      
+      <Group position="center" mb="md">
+        <Button 
+          onClick={handleSave}
+          disabled={!istBearbeitbar}
+        >
+          Speichern
+        </Button>
+        <Button variant="outline" onClick={onClose}>
+          {istBearbeitbar ? "Abbrechen" : "Schließen"}
+        </Button>
+      </Group>
+      
+      {istBearbeitbar && (
         <>
-          <Text mb="md" ta="center">
-            Datum: {dayjs(modal.arbeitszeit.datum).format("DD.MM.YYYY")}
-          </Text>
-          
-          <TimeInput
-            label="Anfangszeit"
-            leftSection={<IconClock size={16} />}
-            value={anfangszeit}
-            onChange={(e) => setAnfangszeit(e.target.value)}
-            mb="md"
-            placeholder="08:00"
-            required
-          />
-          
-          <TimeInput
-            label="Endzeit"
-            leftSection={<IconClock size={16} />}
-            value={endzeit}
-            onChange={(e) => setEndzeit(e.target.value)}
-            mb="md"
-            placeholder="16:30"
-          />
-          
-          <Text size="sm" c="dimmed" mb="md" ta="center">
-            Hinweis: Die Pause wird automatisch basierend auf der Arbeitszeit berechnet.
-            Nachtschichten (über Mitternacht) werden korrekt erkannt und berechnet.
-          </Text>
-          
-          <Group position="center" mb="md">
-            <Button onClick={handleSave}>Speichern</Button>
-            <Button variant="outline" onClick={onClose}>Abbrechen</Button>
-          </Group>
-          
           {/* Trennlinie */}
           <Box mb="md" style={{ borderTop: '1px solid #e9ecef', margin: '15px 0' }}></Box>
           
