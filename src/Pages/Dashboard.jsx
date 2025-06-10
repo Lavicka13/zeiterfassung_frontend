@@ -628,6 +628,7 @@ function Dashboard() {
     setLoading(true);
     try {
       if (heutigerEintrag && !heutigerEintrag.endzeit) {
+        // ÄNDERUNG 1: Endzeit für bestehenden Eintrag speichern
         const endzeitToSave = endzeit || dayjs().format("HH:mm");
         const anfangszeitDate = dayjs(heutigerEintrag.anfangszeit);
         
@@ -655,12 +656,19 @@ function Dashboard() {
           data: payload
         });
         
+        // ÄNDERUNG 1a: Aktualisiere lokalen State sofort nach erfolgreichem Update
+        setHeutigerEintrag({
+          ...heutigerEintrag,
+          endzeit: endeDate.toISOString()
+        });
+        
         notifications.show({
           title: 'Erfolg',
           message: 'Endzeit wurde erfolgreich gespeichert.',
           color: 'green',
         });
       } else {
+        // ÄNDERUNG 2: Neue Startzeit speichern
         const startzeitToSave = startzeit || dayjs().format("HH:mm");
         const heute = dayjs();
         
@@ -686,12 +694,25 @@ function Dashboard() {
         
         console.log("Erstelle neuen Eintrag:", JSON.stringify(payload, null, 2));
         
-        await axios.post("http://localhost:8080/api/arbeitszeiten", payload, {
+        const response = await axios.post("http://localhost:8080/api/arbeitszeiten", payload, {
           headers: { 
             Authorization: token,
             'Content-Type': 'application/json'
           },
         });
+        
+        // ÄNDERUNG 2a: Erstelle sofort den lokalen heutigen Eintrag nach erfolgreichem Create
+        const neuerEintrag = {
+          id: response.data.id || Date.now(), // Fallback falls Backend keine ID zurückgibt
+          nutzer_id: selectedMitarbeiter.ID,
+          datum: heute.format("YYYY-MM-DD"),
+          anfangszeit: anfangDate.toISOString(),
+          endzeit: endzeit ? payload.endzeit : null
+        };
+        
+        setHeutigerEintrag(neuerEintrag);
+        // ÄNDERUNG 2b: Setze Startzeit im Input-Feld für die Anzeige
+        setStartzeit(startzeitToSave);
         
         notifications.show({
           title: 'Erfolg',
@@ -700,8 +721,13 @@ function Dashboard() {
         });
       }
       
+      // ÄNDERUNG 3: Daten erst nach lokaler Aktualisierung refreshen
       await refreshArbeitszeiten();
-      setStartzeit("");
+      
+      // ÄNDERUNG 4: Nur Endzeit leeren, Startzeit bleibt für bestehende Einträge
+      if (!heutigerEintrag || heutigerEintrag.endzeit) {
+        setStartzeit("");
+      }
       setEndzeit("");
     } catch (err) {
       console.error("Fehler beim Speichern der Zeiten:", err);
@@ -755,12 +781,23 @@ function Dashboard() {
       
       const heuteDatumKey = dayjs().format("YYYY-MM-DD");
       const heutiger = uniqueEntries[heuteDatumKey] || null;
-      setHeutigerEintrag(heutiger);
       
+      // ÄNDERUNG 5: Setze heutigerEintrag nur wenn noch nicht lokal gesetzt
+      if (!heutigerEintrag || heutigerEintrag.id !== heutiger?.id) {
+        setHeutigerEintrag(heutiger);
+      }
+      
+      // ÄNDERUNG 6: Verbesserte Logik für Startzeit-Anzeige
       if (heutiger && !heutiger.endzeit) {
-        setStartzeit(dayjs(heutiger.anfangszeit).format("HH:mm"));
-      } else {
-        setStartzeit("");
+        // Nur setzen wenn noch nicht gesetzt oder leer
+        if (!startzeit) {
+          setStartzeit(dayjs(heutiger.anfangszeit).format("HH:mm"));
+        }
+      } else if (!heutiger) {
+        // Kein heutiger Eintrag - Felder leeren
+        if (!startzeit) { // Nur leeren wenn nicht manuell eingegeben
+          setStartzeit("");
+        }
         setEndzeit("");
       }
     } catch (error) {
@@ -950,8 +987,8 @@ function Dashboard() {
           <tr>
             <td style={centerTextStyle}>{dayjs().format("DD.MM.YYYY")}</td>
             <td style={centerTextStyle}>
-              {heutigerEintrag && !heutigerEintrag.endzeit ? (
-                <Text>{startzeit}</Text>
+              {heutigerEintrag && heutigerEintrag.anfangszeit ? (
+                <Text>{dayjs(heutigerEintrag.anfangszeit).format("HH:mm")}</Text>
               ) : (
                 <TimeInput
                   value={startzeit}
@@ -961,7 +998,7 @@ function Dashboard() {
               )}
             </td>
             <td style={centerTextStyle}>
-              {heutigerEintrag && !heutigerEintrag.endzeit ? (
+              {heutigerEintrag && heutigerEintrag.anfangszeit ? (
                 <TimeInput
                   value={endzeit}
                   onChange={(e) => setEndzeit(e.target.value)}
@@ -980,7 +1017,7 @@ function Dashboard() {
             <td style={centerTextStyle}>-</td>
             <td style={centerTextStyle}>
               <Button size="xs" onClick={handleSaveArbeitszeit} color="green">
-                {heutigerEintrag && !heutigerEintrag.endzeit ? "Ende speichern" : "Start speichern"}
+                {heutigerEintrag && heutigerEintrag.anfangszeit ? "Ende speichern" : "Start speichern"}
               </Button>
             </td>
           </tr>
@@ -1091,9 +1128,9 @@ function Dashboard() {
           </Group>
         </Card.Section>
         <Group position="apart" mt="xs">
-          {heutigerEintrag && !heutigerEintrag.endzeit ? (
+          {heutigerEintrag && heutigerEintrag.anfangszeit ? (
             <Text size="sm" style={{ width: '45%' }}>
-              <b>Start:</b> {startzeit}
+              <b>Start:</b> {dayjs(heutigerEintrag.anfangszeit).format("HH:mm")}
             </Text>
           ) : (
             <TimeInput
@@ -1124,7 +1161,7 @@ function Dashboard() {
           onClick={handleSaveArbeitszeit}
           color="green"
         >
-          {heutigerEintrag && !heutigerEintrag.endzeit ? "Ende speichern" : "Start speichern"}
+          {heutigerEintrag && heutigerEintrag.anfangszeit ? "Ende speichern" : "Start speichern"}
         </Button>
       </Card>
     )}
