@@ -1,4 +1,4 @@
-// Komplette Dashboard.jsx-Datei mit korrigierter Zeitberechnung für Nachtschichten
+// Komplette Dashboard.jsx-Datei mit korrigierter Zeitberechnung für Nachtschichten und Fix für Monatsstatistik
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
@@ -569,6 +569,17 @@ function Dashboard() {
     let gesamtStunden = 0;
     let arbeitsTage = 0;
 
+    // FIX: Überprüfe, ob arbeitszeiten existiert und ein Array ist
+    if (!arbeitszeiten || !Array.isArray(arbeitszeiten) || arbeitszeiten.length === 0) {
+      // WICHTIG: Setze die Statistik auf Null-Werte zurück
+      setMonatlicheStatistik({
+        gesamtStunden: "-",
+        arbeitsTage: 0,
+        durchschnittProTag: "-"
+      });
+      return;
+    }
+
     const abgeschlosseneZeiten = arbeitszeiten.filter(a => a.endzeit);
 
     abgeschlosseneZeiten.forEach(zeit => {
@@ -584,17 +595,16 @@ function Dashboard() {
     const durchschnittProTag = arbeitsTage > 0 ? gesamtStunden / arbeitsTage : 0;
 
     setMonatlicheStatistik({
-      gesamtStunden: formatHoursAndMinutes(gesamtStunden),
+      gesamtStunden: gesamtStunden > 0 ? formatHoursAndMinutes(gesamtStunden) : "-",
       arbeitsTage,
-      durchschnittProTag: formatHoursAndMinutes(durchschnittProTag)
+      durchschnittProTag: durchschnittProTag > 0 ? formatHoursAndMinutes(durchschnittProTag) : "-"
     });
   };
 
+  // FIX: useEffect für die Statistikberechnung - wird auch bei leeren Arbeitszeiten aufgerufen
   useEffect(() => {
-    if (arbeitszeiten.length > 0) {
-      berechneMontlicheStatistik();
-    }
-  }, [arbeitszeiten]);
+    berechneMontlicheStatistik();
+  }, [arbeitszeiten]); // Entferne die Bedingung arbeitszeiten.length > 0
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -755,6 +765,8 @@ function Dashboard() {
       }
     } catch (error) {
       console.error("Fehler beim Aktualisieren der Arbeitszeiten:", error);
+      // FIX: Setze arbeitszeiten auf leeres Array bei Fehler
+      setArbeitszeiten([]);
       notifications.show({
         title: 'Fehler',
         message: 'Arbeitszeiten konnten nicht aktualisiert werden.',
@@ -1049,6 +1061,27 @@ function Dashboard() {
       {/* Mobile Ansicht als Karten (nur auf Mobilgeräten sichtbar) */}
 {isMobile && (
   <Stack spacing="xs">
+    {/* Monatsstatistik für Mobile */}
+    <Card shadow="sm" withBorder p="xs" bg="blue.0">
+      <Text fw={500} ta="center" mb="xs">
+        Monatsübersicht {selectedMonat.locale('de').format("MMMM YYYY")}
+      </Text>
+      <SimpleGrid cols={3} spacing="xs">
+        <div style={{ textAlign: 'center' }}>
+          <Text size="xs" c="dimmed">Gesamtzeit</Text>
+          <Text fw={500} size="sm">{monatlicheStatistik.gesamtStunden}</Text>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <Text size="xs" c="dimmed">Arbeitstage</Text>
+          <Text fw={500} size="sm">{monatlicheStatistik.arbeitsTage}</Text>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <Text size="xs" c="dimmed">Ø pro Tag</Text>
+          <Text fw={500} size="sm">{monatlicheStatistik.durchschnittProTag}</Text>
+        </div>
+      </SimpleGrid>
+    </Card>
+
     {/* Neue Zeiterfassung (nur für aktuellen Monat und nur wenn noch kein Eintrag mit Endzeit existiert) */}
     {istAktuellerMonat && (!heutigerEintrag || !heutigerEintrag.endzeit) && (
       <Card shadow="sm" withBorder p="xs">
