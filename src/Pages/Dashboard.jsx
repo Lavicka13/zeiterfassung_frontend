@@ -1,4 +1,4 @@
-// Geänderte Dashboard.jsx-Datei mit neuem Button für Eintragserfassung mit Datumsauswahl
+// Komplette Dashboard.jsx-Datei mit korrigierter Zeitberechnung für Nachtschichten
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
@@ -71,6 +71,7 @@ function Dashboard() {
     const role = typeof userRole === 'string' ? parseInt(userRole) : userRole;
     return role >= 2;
   }, [userRole]);
+  
   const theme = useMantineTheme();
   const isMobile = useMediaQuery(`(max-width: ${theme.breakpoints.sm})`);
   const isExtraSmall = useMediaQuery(`(max-width: ${theme.breakpoints.xs})`);
@@ -104,6 +105,97 @@ function Dashboard() {
   });
 
   const centerTextStyle = { textAlign: 'center' };
+
+  // NEUE HILFSFUNKTION FÜR KORREKTE ZEITBERECHNUNG
+  const calculateWorkingHours = (startTime, endTime, pauseMinutes) => {
+    let start = dayjs(startTime);
+    let end = dayjs(endTime);
+    
+    // Wenn Endzeit vor Startzeit liegt, füge einen Tag zur Endzeit hinzu
+    if (end.isBefore(start)) {
+      end = end.add(1, 'day');
+    }
+    
+    // Berechne die Gesamtzeit in Stunden
+    const totalHours = end.diff(start, 'hour', true);
+    
+    // Ziehe die Pause ab
+    const pauseHours = pauseMinutes / 60;
+    const workingHours = totalHours - pauseHours;
+    
+    // Stelle sicher, dass das Ergebnis nicht negativ ist
+    return workingHours > 0 ? workingHours : 0;
+  };
+
+  // NEUE HILFSFUNKTION FÜR KORREKTE PAUSENBERECHNUNG
+  const calculatePause = (startTime, endTime) => {
+    let start = dayjs(startTime);
+    let end = dayjs(endTime);
+    
+    // Wenn Endzeit vor Startzeit liegt, füge einen Tag zur Endzeit hinzu
+    if (end.isBefore(start)) {
+      end = end.add(1, 'day');
+    }
+    
+    // Berechne die Gesamtzeit in Stunden
+    const totalHours = end.diff(start, 'hour', true);
+    
+    // Pausenlogik entsprechend Backend
+    if (totalHours >= 9) {
+      return 45;
+    } else if (totalHours >= 6) {
+      return 30;
+    } else {
+      return 0;
+    }
+  };
+
+  // KOMBINIERTE FUNKTION FÜR ARBEITSZEIT UND PAUSE
+  const calculateWorkingHoursAndPause = (startTime, endTime) => {
+    let start = dayjs(startTime);
+    let end = dayjs(endTime);
+    
+    // Wenn Endzeit vor Startzeit liegt, füge einen Tag zur Endzeit hinzu
+    if (end.isBefore(start)) {
+      end = end.add(1, 'day');
+    }
+    
+    // Berechne die Gesamtzeit in Stunden
+    const totalHours = end.diff(start, 'hour', true);
+    
+    // Berechne die korrekte Pause
+    let pauseMinutes = 0;
+    if (totalHours >= 9) {
+      pauseMinutes = 45;
+    } else if (totalHours >= 6) {
+      pauseMinutes = 30;
+    }
+    
+    // Ziehe die Pause ab
+    const pauseHours = pauseMinutes / 60;
+    const workingHours = totalHours - pauseHours;
+    
+    return {
+      workingHours: workingHours > 0 ? workingHours : 0,
+      pauseMinutes: pauseMinutes
+    };
+  };
+
+  // HILFSFUNKTION ZUR FORMATIERUNG VON STUNDEN UND MINUTEN
+  const formatHoursAndMinutes = (decimalHours) => {
+    if (decimalHours <= 0) return "-";
+    
+    const hours = Math.floor(decimalHours);
+    const minutes = Math.round((decimalHours - hours) * 60);
+    
+    if (hours === 0) {
+      return `${minutes} min`;
+    } else if (minutes === 0) {
+      return `${hours} Std`;
+    } else {
+      return `${hours} Std ${minutes} min`;
+    }
+  };
 
   useEffect(() => {
     const fetchMitarbeiter = async () => {
@@ -141,6 +233,7 @@ function Dashboard() {
 
     if (token && decoded) fetchMitarbeiter();
   }, [token, decoded]);
+
   useEffect(() => {
     if (!selectedMitarbeiter || !selectedMonat) return;
     
@@ -253,10 +346,8 @@ function Dashboard() {
     
     setLoading(true);
     try {
-      // Verbesserte Fehlerbehandlung und Logging
       console.log("Versuche Arbeitszeit mit ID zu löschen:", id);
       
-      // Versuche einen anderen API-Pfad, der konsistent mit deinen anderen API-Endpunkten ist
       const response = await axios.delete(`http://localhost:8080/api/arbeitszeiten/${id}`, {
         headers: { Authorization: token }
       });
@@ -272,7 +363,6 @@ function Dashboard() {
       setEditModal({ open: false, arbeitszeit: null, anfangszeit: "", endzeit: "" });
       await refreshArbeitszeiten();
     } catch (error) {
-      // Verbesserte Fehlerprotokollierung
       console.error("Fehler beim Löschen:", error);
       console.error("Fehlerdetails:", error.response?.data);
       console.error("Status-Code:", error.response?.status);
@@ -288,7 +378,6 @@ function Dashboard() {
   };
 
   const handleEdit = (arbeitszeit) => {
-    // Modal mit den Daten des ausgewählten Eintrags öffnen
     const anfangszeitFormatted = arbeitszeit.anfangszeit ? 
       dayjs(arbeitszeit.anfangszeit).format('HH:mm') : '';
     const endzeitFormatted = arbeitszeit.endzeit ? 
@@ -305,7 +394,6 @@ function Dashboard() {
   const handleSaveEdit = async () => {
     if (!editModal.arbeitszeit) return;
     
-    // Validierung
     if (!editModal.anfangszeit) {
       notifications.show({
         title: 'Fehler',
@@ -317,31 +405,26 @@ function Dashboard() {
     
     setLoading(true);
     try {
-      // Datum aus dem arbeitszeit-Objekt extrahieren
       const datum = dayjs(editModal.arbeitszeit.datum);
       
-      // Anfangszeit mit dem korrekten Datum kombinieren und in ISO-Format mit Z konvertieren
-      // Go erwartet RFC3339-Format: "2006-01-02T15:04:05Z07:00"
       const anfangszeit = datum
         .hour(parseInt(editModal.anfangszeit.split(':')[0]))
         .minute(parseInt(editModal.anfangszeit.split(':')[1]))
         .second(0)
-        .toISOString(); // Format: 2025-05-14T08:00:00.000Z
+        .toISOString();
       
-      // Payload vorbereiten
       const payload = {
         id: editModal.arbeitszeit.id,
         anfangszeit: anfangszeit,
         bearbeiter_id: decoded?.nutzer_id,
       };
       
-      // Endzeit nur hinzufügen, wenn sie tatsächlich einen Wert hat
       if (editModal.endzeit && editModal.endzeit.trim() !== '') {
         const endzeit = datum
           .hour(parseInt(editModal.endzeit.split(':')[0]))
           .minute(parseInt(editModal.endzeit.split(':')[1]))
           .second(0)
-          .toISOString(); // Format: 2025-05-14T16:30:00.000Z
+          .toISOString();
         
         payload.endzeit = endzeit;
       }
@@ -357,7 +440,7 @@ function Dashboard() {
         },
         data: payload,
         validateStatus: function (status) {
-          return status < 500; // Akzeptiere auch Fehlerstatus für Debug-Zwecke
+          return status < 500;
         }
       });
       
@@ -416,7 +499,6 @@ function Dashboard() {
     try {
       const selectedDate = dayjs(newEntryModal.datum);
       
-      // Erstelle einen neuen Eintrag
       const anfangszeitArray = newEntryModal.anfangszeit.split(':');
       const anfangDate = selectedDate
         .hour(parseInt(anfangszeitArray[0]))
@@ -454,7 +536,6 @@ function Dashboard() {
         color: 'green',
       });
       
-      // Schließe den Modal und setze Felder zurück
       setNewEntryModal({
         open: false,
         datum: new Date(),
@@ -462,7 +543,6 @@ function Dashboard() {
         endzeit: ""
       });
       
-      // Aktualisiere die Monatsansicht, wenn das erstellte Datum im aktuell angezeigten Monat liegt
       if (selectedDate.month() === selectedMonat.month() && 
           selectedDate.year() === selectedMonat.year()) {
         await refreshArbeitszeiten();
@@ -484,6 +564,7 @@ function Dashboard() {
     }
   };
 
+  // KORRIGIERTE FUNKTION FÜR MONATLICHE STATISTIK
   const berechneMontlicheStatistik = () => {
     let gesamtStunden = 0;
     let arbeitsTage = 0;
@@ -491,16 +572,11 @@ function Dashboard() {
     const abgeschlosseneZeiten = arbeitszeiten.filter(a => a.endzeit);
 
     abgeschlosseneZeiten.forEach(zeit => {
-      // Berechne die Arbeitszeit in Stunden
-      const start = dayjs(zeit.anfangszeit);
-      const ende = dayjs(zeit.endzeit);
+      // Verwende die korrigierte Berechnungsfunktion mit korrekter Pause
+      const { workingHours } = calculateWorkingHoursAndPause(zeit.anfangszeit, zeit.endzeit);
       
-      // Berechne die Differenz in Stunden und ziehe die Pause ab
-      const pauseInStunden = zeit.pause / 60;
-      const stundenDifferenz = ende.diff(start, 'hour', true) - pauseInStunden;
-      
-      if (stundenDifferenz > 0) {
-        gesamtStunden += stundenDifferenz;
+      if (workingHours > 0) {
+        gesamtStunden += workingHours;
         arbeitsTage++;
       }
     });
@@ -508,28 +584,24 @@ function Dashboard() {
     const durchschnittProTag = arbeitsTage > 0 ? gesamtStunden / arbeitsTage : 0;
 
     setMonatlicheStatistik({
-      gesamtStunden: gesamtStunden.toFixed(2),
+      gesamtStunden: formatHoursAndMinutes(gesamtStunden),
       arbeitsTage,
-      durchschnittProTag: durchschnittProTag.toFixed(2)
+      durchschnittProTag: formatHoursAndMinutes(durchschnittProTag)
     });
   };
 
-  // Füge diesen useEffect nach dem useEffect hinzu, der die Arbeitszeiten lädt
   useEffect(() => {
     if (arbeitszeiten.length > 0) {
       berechneMontlicheStatistik();
     }
   }, [arbeitszeiten]);
 
-
   const handleLogout = () => {
     localStorage.removeItem("token");
     navigate("/login");
   };
 
-  // Überarbeitete Funktion für das Speichern der Arbeitszeit
   const handleSaveArbeitszeit = async () => {
-    // Prüfen, ob ein Mitarbeiter ausgewählt ist
     if (!selectedMitarbeiter) {
       notifications.show({
         title: 'Fehler',
@@ -539,22 +611,16 @@ function Dashboard() {
       return;
     }
     
-    // Wenn keine Startzeit eingegeben wurde, aktuelle Zeit verwenden
     if (!startzeit) {
       setStartzeit(dayjs().format("HH:mm"));
     }
     
     setLoading(true);
     try {
-      // Wenn bereits ein Eintrag für heute existiert und keine Endzeit hat
       if (heutigerEintrag && !heutigerEintrag.endzeit) {
-        // Aktualisiere den bestehenden Eintrag mit der Endzeit
         const endzeitToSave = endzeit || dayjs().format("HH:mm");
-        
-        // Anfangszeit aus dem bestehenden Eintrag erhalten
         const anfangszeitDate = dayjs(heutigerEintrag.anfangszeit);
         
-        // Endzeit als ISO-String erstellen 
         const endeDate = dayjs()
           .hour(parseInt(endzeitToSave.split(':')[0]))
           .minute(parseInt(endzeitToSave.split(':')[1]))
@@ -562,8 +628,8 @@ function Dashboard() {
         
         const payload = {
           id: heutigerEintrag.id,
-          anfangszeit: anfangszeitDate.toISOString(), // ISO-Format: 2025-05-14T08:00:00.000Z
-          endzeit: endeDate.toISOString(), // ISO-Format: 2025-05-14T16:30:00.000Z
+          anfangszeit: anfangszeitDate.toISOString(),
+          endzeit: endeDate.toISOString(),
           bearbeiter_id: decoded?.nutzer_id,
         };
         
@@ -585,11 +651,9 @@ function Dashboard() {
           color: 'green',
         });
       } else {
-        // Erstelle einen neuen Eintrag
         const startzeitToSave = startzeit || dayjs().format("HH:mm");
         const heute = dayjs();
         
-        // Anfangszeit als ISO-String erstellen
         const anfangDate = heute
           .hour(parseInt(startzeitToSave.split(':')[0]))
           .minute(parseInt(startzeitToSave.split(':')[1]))
@@ -598,7 +662,7 @@ function Dashboard() {
         const payload = {
           nutzer_id: selectedMitarbeiter.ID,
           datum: heute.format("YYYY-MM-DD"),
-          anfangszeit: anfangDate.toISOString(), // ISO-Format: 2025-05-14T08:00:00.000Z
+          anfangszeit: anfangDate.toISOString(),
         };
 
         if (endzeit) {
@@ -607,7 +671,7 @@ function Dashboard() {
             .minute(parseInt(endzeit.split(':')[1]))
             .second(0);
           
-          payload.endzeit = endeDate.toISOString(); // ISO-Format: 2025-05-14T16:30:00.000Z
+          payload.endzeit = endeDate.toISOString();
         }
         
         console.log("Erstelle neuen Eintrag:", JSON.stringify(payload, null, 2));
@@ -646,7 +710,6 @@ function Dashboard() {
     }
   };
 
-  // Funktion zum Aktualisieren der Arbeitszeiten mit Duplifikaterkennung
   const refreshArbeitszeiten = async () => {
     if (!selectedMitarbeiter || !selectedMonat) return;
     
@@ -658,20 +721,14 @@ function Dashboard() {
         { headers: { Authorization: token } }
       );
       
-      // Entferne doppelte Einträge (basierend auf dem Datum)
       const uniqueEntries = {};
       response.data.forEach(item => {
         const datumKey = dayjs(item.datum).format("YYYY-MM-DD");
         
-        // Wenn bereits ein Eintrag für dieses Datum existiert:
         if (uniqueEntries[datumKey]) {
-          // Wenn der aktuelle Eintrag eine Endzeit hat, aber der bereits vorhandene nicht, 
-          // dann verwende den aktuellen
           if (item.endzeit && !uniqueEntries[datumKey].endzeit) {
             uniqueEntries[datumKey] = item;
           } 
-          // Wenn beide eine Endzeit haben oder beide keine haben, 
-          // nehme den mit der höheren ID (neueren Eintrag)
           else if ((item.endzeit && uniqueEntries[datumKey].endzeit) || 
                   (!item.endzeit && !uniqueEntries[datumKey].endzeit)) {
             if (item.id > uniqueEntries[datumKey].id) {
@@ -679,21 +736,17 @@ function Dashboard() {
             }
           }
         } else {
-          // Wenn noch kein Eintrag für dieses Datum existiert, füge den aktuellen hinzu
           uniqueEntries[datumKey] = item;
         }
       });
       
-      // Konvertiere zurück zu einem Array
       const uniqueArbeitszeiten = Object.values(uniqueEntries);
       setArbeitszeiten(uniqueArbeitszeiten);
       
-      // Aktualisiere den heutigen Eintrag
       const heuteDatumKey = dayjs().format("YYYY-MM-DD");
       const heutiger = uniqueEntries[heuteDatumKey] || null;
       setHeutigerEintrag(heutiger);
       
-      // Aktualisiere die Startzeit-Anzeige
       if (heutiger && !heutiger.endzeit) {
         setStartzeit(dayjs(heutiger.anfangszeit).format("HH:mm"));
       } else {
@@ -712,7 +765,6 @@ function Dashboard() {
     }
   };
 
-  // Nutzer kann nur sich selbst sehen, es sei denn, er ist Vorgesetzter oder Admin
   const filteredMitarbeiter = useMemo(() => {
     if (isVorgesetzter || isAdmin) {
       return mitarbeiterListe;
@@ -721,7 +773,6 @@ function Dashboard() {
     }
   }, [mitarbeiterListe, decoded?.nutzer_id, isVorgesetzter, isAdmin]);
 
-  // Sidebar-Inhalt, wiederverwendbar für Desktop und Mobile
   const SidebarContent = () => (
     <>
       {filteredMitarbeiter.length > 1 && (
@@ -751,7 +802,6 @@ function Dashboard() {
       />
       </Group>
       
-      {/* Nur Vorgesetzte und Admins sehen den Button zur Nutzerverwaltung */}
       {(isVorgesetzter || isAdmin) && (
         <Button 
           fullWidth 
@@ -788,7 +838,6 @@ function Dashboard() {
         </Title>
       </Group>
 
-      {/* Export-Menu für Monatsbericht - nur auf größeren Bildschirmen */}
       <Group position="center" mt="md" mb="sm">
         {!isExtraSmall && (
           <Menu shadow="md" width={220}>
@@ -804,9 +853,8 @@ function Dashboard() {
               </Menu.Item>
             </Menu.Dropdown>
           </Menu>
-          
         )}
-        {/* Export-Menu für Jahresbericht - nur auf größeren Bildschirmen */}
+        
         {!isExtraSmall && (
           <Menu shadow="md" width={220}>
             <Menu.Target>
@@ -824,7 +872,6 @@ function Dashboard() {
         )}
       </Group>
       
-      {/* Mobile Export Buttons - nur auf kleinen Bildschirmen */}
       {isExtraSmall && (
         <SimpleGrid cols={2} spacing="xs" mb="md">
           <Menu shadow="md" width={160}>
@@ -861,13 +908,13 @@ function Dashboard() {
           </Group>
           <Group>
             <Badge color="blue" size="lg">
-              Gesamtarbeitszeit: {monatlicheStatistik.gesamtStunden} Stunden
+              Gesamtarbeitszeit: {monatlicheStatistik.gesamtStunden}
             </Badge>
             <Badge color="teal" size="lg">
               Arbeitstage: {monatlicheStatistik.arbeitsTage}
             </Badge>
             <Badge color="grape" size="lg">
-              Ø pro Tag: {monatlicheStatistik.durchschnittProTag} Stunden
+              Ø pro Tag: {monatlicheStatistik.durchschnittProTag}
             </Badge>
           </Group>
         </Group>
@@ -927,36 +974,32 @@ function Dashboard() {
           </tr>
         )}
 
-        {/* Liste der Arbeitszeiten, aber nur Einträge anzeigen, die nicht der aktuelle Tag sind oder die bereits eine Endzeit haben */}
+        {/* Liste der Arbeitszeiten mit korrigierter Zeitberechnung */}
         {arbeitszeiten.length > 0 ? (
           arbeitszeiten
             .slice()
             .sort((a, b) => dayjs(b.datum).diff(dayjs(a.datum)))
             .filter(a => {
-              // Wenn es der heutige Tag ist und kein heutigerEintrag existiert, trotzdem anzeigen
               if (dayjs(a.datum).isSame(dayjs(), "day") && !heutigerEintrag) {
                 return true;
               }
-              // Wenn es der heutige Tag ist und der Eintrag eine Endzeit hat, anzeigen
               if (dayjs(a.datum).isSame(dayjs(), "day") && a.endzeit) {
                 return true;
               }
-              // Wenn es der heutige Tag ist und der Eintrag keine Endzeit hat, aber nicht der heutigerEintrag ist, nicht anzeigen
               if (dayjs(a.datum).isSame(dayjs(), "day") && !a.endzeit && heutigerEintrag && a.id !== heutigerEintrag.id) {
                 return false;
               }
-              // Wenn es kein heutiger Tag ist, immer anzeigen
               return !dayjs(a.datum).isSame(dayjs(), "day");
             })
             .map((a, index) => {
-              // Berechne die Arbeitszeit in Stunden, wenn eine Endzeit vorhanden ist
+              // KORRIGIERTE ZEITBERECHNUNG MIT KORREKTER PAUSE
               let arbeitszeitText = "-";
+              let korrektePause = a.pause; // Standard: verwende DB-Wert
+              
               if (a.endzeit) {
-                const start = dayjs(a.anfangszeit);
-                const ende = dayjs(a.endzeit);
-                const pauseInStunden = a.pause / 60;
-                const stundenDifferenz = ende.diff(start, 'hour', true) - pauseInStunden;
-                arbeitszeitText = stundenDifferenz > 0 ? stundenDifferenz.toFixed(2) + " h" : "-";
+                const { workingHours, pauseMinutes } = calculateWorkingHoursAndPause(a.anfangszeit, a.endzeit);
+                arbeitszeitText = formatHoursAndMinutes(workingHours);
+                korrektePause = pauseMinutes; // Verwende die korrekt berechnete Pause
               }
               
               return (
@@ -973,7 +1016,7 @@ function Dashboard() {
                   <td style={centerTextStyle}>
                     {a.endzeit ? dayjs(a.endzeit).format("HH:mm") : "-"}
                   </td>
-                  <td style={centerTextStyle}>{a.pause} min</td>
+                  <td style={centerTextStyle}>{korrektePause} min</td>
                   <td style={centerTextStyle}>{arbeitszeitText}</td>
                   <td style={centerTextStyle}>
                     <Button size="xs" onClick={() => handleEdit(a)}>Bearbeiten</Button>
@@ -1000,8 +1043,6 @@ function Dashboard() {
             Neuen Zeiteintrag anlegen
           </Button>
         </Group>
-      
-    
   </>
 )}
       
@@ -1055,50 +1096,61 @@ function Dashboard() {
       </Card>
     )}
     
-    {/* Bestehende Einträge als Karten - mit der gleichen Filterlogik wie bei der Tabelle */}
+    {/* Bestehende Einträge als Karten mit korrigierter Zeitberechnung */}
     {arbeitszeiten.length > 0 ? (
       arbeitszeiten
         .slice()
         .sort((a, b) => dayjs(b.datum).diff(dayjs(a.datum)))
         .filter(a => {
-          // Wenn es der heutige Tag ist und kein heutigerEintrag existiert, trotzdem anzeigen
           if (dayjs(a.datum).isSame(dayjs(), "day") && !heutigerEintrag) {
             return true;
           }
-          // Wenn es der heutige Tag ist und der Eintrag eine Endzeit hat, anzeigen
           if (dayjs(a.datum).isSame(dayjs(), "day") && a.endzeit) {
             return true;
           }
-          // Wenn es der heutige Tag ist und der Eintrag keine Endzeit hat, aber nicht der heutigerEintrag ist, nicht anzeigen
           if (dayjs(a.datum).isSame(dayjs(), "day") && !a.endzeit && heutigerEintrag && a.id !== heutigerEintrag.id) {
             return false;
           }
-          // Wenn es kein heutiger Tag ist, immer anzeigen
           return !dayjs(a.datum).isSame(dayjs(), "day");
         })
-        .map((a) => (
-          <Card key={a.id} shadow="sm" withBorder p="xs">
-            <Card.Section withBorder p="xs" bg="gray.0">
-              <Group position="apart">
-                <Text fw={500} ta="center" style={{width: '100%'}}>{dayjs(a.datum).format("DD.MM.YYYY")}</Text>
-                <ActionIcon size="sm" onClick={() => handleEdit(a)} style={{position: 'absolute', right: '12px'}}>
-                  <IconPencil size={16} />
-                </ActionIcon>
-              </Group>
-            </Card.Section>
-            <SimpleGrid cols={2} spacing="xs" mt="xs">
-              <Text size="sm" ta="center">
-                <b>Start:</b> {a.anfangszeit ? dayjs(a.anfangszeit).format("HH:mm") : "-"}
-              </Text>
-              <Text size="sm" ta="center">
-                <b>Ende:</b> {a.endzeit ? dayjs(a.endzeit).format("HH:mm") : "-"}
-              </Text>
-              <Text size="sm" span={2} ta="center">
-                <b>Pause:</b> {a.pause} min
-              </Text>
-            </SimpleGrid>
-          </Card>
-        ))
+        .map((a) => {
+          // KORRIGIERTE ZEITBERECHNUNG MIT KORREKTER PAUSE
+          let arbeitszeitText = "-";
+          let korrektePause = a.pause; // Standard: verwende DB-Wert
+          
+          if (a.endzeit) {
+            const { workingHours, pauseMinutes } = calculateWorkingHoursAndPause(a.anfangszeit, a.endzeit);
+            arbeitszeitText = formatHoursAndMinutes(workingHours);
+            korrektePause = pauseMinutes; // Verwende die korrekt berechnete Pause
+          }
+          
+          return (
+            <Card key={a.id} shadow="sm" withBorder p="xs">
+              <Card.Section withBorder p="xs" bg="gray.0">
+                <Group position="apart">
+                  <Text fw={500} ta="center" style={{width: '100%'}}>{dayjs(a.datum).format("DD.MM.YYYY")}</Text>
+                  <ActionIcon size="sm" onClick={() => handleEdit(a)} style={{position: 'absolute', right: '12px'}}>
+                    <IconPencil size={16} />
+                  </ActionIcon>
+                </Group>
+              </Card.Section>
+              <SimpleGrid cols={2} spacing="xs" mt="xs">
+                <Text size="sm" ta="center">
+                  <b>Start:</b> {a.anfangszeit ? dayjs(a.anfangszeit).format("HH:mm") : "-"}
+                </Text>
+                <Text size="sm" ta="center">
+                  <b>Ende:</b> {a.endzeit ? dayjs(a.endzeit).format("HH:mm") : "-"}
+                </Text>
+                <Text size="sm" ta="center">
+                  <b>Pause:</b> {korrektePause} min
+                </Text>
+                <Text size="sm" ta="center">
+                  <b>Arbeitszeit:</b> {arbeitszeitText}
+                </Text>
+              </SimpleGrid>
+            </Card>
+          );
+        })
     ) : (
       <Card shadow="sm" withBorder p="md">
         <Text ta="center" c="dimmed">
@@ -1106,6 +1158,18 @@ function Dashboard() {
         </Text>
       </Card>
     )}
+    
+    {/* Button für neuen Eintrag auf Mobile */}
+    <Button 
+      onClick={() => setNewEntryModal({ ...newEntryModal, open: true })}
+      leftSection={<IconPlus size={16} />}
+      color="violet"
+      size="md"
+      fullWidth
+      mt="md"
+    >
+      Neuen Zeiteintrag anlegen
+    </Button>
   </Stack>
 )}
     </Paper>
@@ -1190,6 +1254,7 @@ function Dashboard() {
               
               <Text size="sm" c="dimmed" mb="md" ta="center">
                 Hinweis: Die Pause wird automatisch basierend auf der Arbeitszeit berechnet.
+                Nachtschichten (über Mitternacht) werden korrekt erkannt und berechnet.
               </Text>
               
               <Group position="center" mb="md">
@@ -1200,7 +1265,6 @@ function Dashboard() {
                 >
                   Abbrechen
                 </Button>
-              
               </Group>
               
               {/* Trennlinie */}
@@ -1224,7 +1288,7 @@ function Dashboard() {
           )}
         </Modal>
 
-        {/* Neuer Modal für die Erstellung eines neuen Eintrags mit Datumsauswahl */}
+        {/* Modal für die Erstellung eines neuen Eintrags */}
         <Modal
           opened={newEntryModal.open}
           onClose={() => setNewEntryModal({ 
@@ -1270,6 +1334,7 @@ function Dashboard() {
           
           <Text size="sm" c="dimmed" mb="md" ta="center">
             Hinweis: Die Pause wird automatisch basierend auf der Arbeitszeit berechnet.
+            Nachtschichten (über Mitternacht) werden korrekt erkannt und berechnet.
             Wenn keine Endzeit angegeben wird, kann der Eintrag später ergänzt werden.
           </Text>
           

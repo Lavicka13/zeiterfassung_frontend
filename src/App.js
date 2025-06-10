@@ -22,7 +22,7 @@ function App() {
                 styles={(theme) => ({
                     main: {
                         paddingBottom: 'calc(var(--mantine-spacing-md) )',
-                        position: 'relative', // für absolute Positionierung des Headers
+                        position: 'relative', 
                     },
                     footer: {
                         paddingTop: 0,
@@ -31,7 +31,7 @@ function App() {
                 })}
             >
                 <Router>
-                    {/* Header ist absolut in der oberen rechten Ecke positioniert */}
+                    
                     <Header />
                     
                     <Routes>
